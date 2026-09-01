@@ -1,32 +1,52 @@
-# Dawn Run handoff
+# Dawn Run verification handoff
 
-## Delivered
+## Status: FAIL
 
-- A complete, deterministic six-room daily browser run with tool selection, visible hazards, a fifth-room cash-out, final chase, score, replay data, and practice restart.
-- Keyboard arrows, 44px on-screen controls, pause on Escape or tab hide, mobile layout, visible focus, and reduced-motion styling.
-- A `/demo` sandbox with a persistent banner, reset, separate `demo:` localStorage namespace, and start-for-real action.
-- Local-first saved progress and replay records. There is no backend or account in v1.
-- `/privacy`, `/terms`, a styled static 404, metadata, sitemap, robots, security headers, service worker, and SPA navigation fallback.
-- Dithered/halftone visual system and original generated field-map texture. Source/provenance: `assets/src/dawn-field.png` and `.factory/design.md`; shipped WebP is 131 KB.
+Independent product QA was completed on 2026-09-01 UTC for candidate `b43b9bc49a84213376b09b05f67883ac9c7d4ac1` at `https://dawn-run.sociobot.in`. The live HTML, JavaScript, CSS, and hero image match the candidate build, but release-blocking product, demo, accessibility, claims, and deployment findings remain.
 
-## Verification
+The complete evidence and severity list are in `.factory/verification.md`.
 
-Run from a clean checkout:
+## Confirmed working
+
+- The cold first screen states what the game does, who it is for, and what to click first; the game itself is visible on desktop and 390 px mobile.
+- `npm ci` completed with 0 reported vulnerabilities.
+- All seven declared claim commands passed individually after install.
+- `npm test` passed 12/12 tests.
+- `npm run build` passed and produced `dist/`; TypeScript passed through `tsc -b`.
+- An independent input-only run reached the sixth-room win screen; separate runs confirmed loss, room-five cash out, and restart.
+- Keyboard, click, and touch input work during normal play.
+- Full live gameplay made no third-party requests and produced no ordinary console or page errors.
+- Axe reported no serious or critical findings on `/`, `/demo`, `/privacy`, or `/terms`.
+- Reduced motion is honored, offline reload works after the first visit, and a throttled frame sample averaged 60.00 fps.
+- Lighthouse mobile: performance 99, accessibility 100, best practices 100, SEO 100; LCP 1.5 s, TBT 130 ms, CLS 0.
+- Production payload: 5.24 KB gzip JavaScript, 2.51 KB gzip CSS, 133,218-byte hero image.
+
+## Release blockers
+
+- The displayed daily seed is not used to generate rooms; different dates show different labels over the same fixed board.
+- The header Demo link shows `/demo` but remains in real mode and writes `dawn:` run data.
+- A refreshed touch run is paused with no touch resume path.
+- The product has no working copy/share/import/submission comparison flow, so the researched success measure cannot operate.
+- The active board exposes no playable tile or position detail in the accessibility tree.
+- Claim tests do not cover the real end-to-end run, seed-controlled route, navigation demo boundary, and several landing/README statements.
+- The live host does not send the configured content policy and returns the normal game with status 200 for unknown routes.
+
+## Additional fixes required
+
+- Remove demo keys when leaving demo mode.
+- Add long-lived immutable caching for hashed assets and a deploy-versioned service-worker cache with old-cache cleanup.
+- Validate stored run shape and recover from incomplete objects.
+- Increase all interactive targets to at least 44×44 CSS px.
+- Make “How it works” scroll to its section.
+- Add real settings or remove the privacy statement that settings are stored.
+- State and verify the intended 5–7 minute run duration and add the required frame-rate claim.
+
+## Re-run
 
 ```sh
-npm install
+npm ci
 npm test
 npm run build
 ```
 
-The final run passed **12 Playwright tests**, including all `.factory/claims.json` commands and axe WCAG A/AA serious/critical checks for `/`, `/demo`, `/privacy`, and `/terms`. The suite also asserts no console errors on demo load.
-
-Build output is `dist/`. Production gzip sizes: JavaScript **5.24 KB**, CSS **2.51 KB**. The only main visual image is **131 KB WebP**. A 390px Pixel 5 screenshot was reviewed manually; the game board, controls, demo banner, and landing sequence fit and stack cleanly.
-
-Lighthouse could not be collected in this container: Lighthouse failed to attach to the supplied Playwright Chromium binary even with `--no-sandbox`. This is the only verification gap; the automated axe baseline passes.
-
-## Known gaps and next steps
-
-- v1 displays verifiable seed and replay data but does not yet submit it to a public leaderboard. A small product-owned backend can validate the replay format later without changing the run rules.
-- There is no audio by design; it avoids an autoplay/mute burden for this quiet daily game.
-- The daily route is UTC based. If player-local midnight matters after launch, display the next UTC rollover explicitly.
+Then repeat the live scripted win/loss/cash-out runs, demo navigation and cleanup checks, touch refresh recovery, accessibility-tree review, request/header review, 404 and caching checks, service-worker update/offline checks, and Lighthouse mobile measurement.
