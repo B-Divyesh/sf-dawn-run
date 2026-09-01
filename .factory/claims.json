@@ -1,0 +1,51 @@
+[
+  {
+    "id": "demo-isolated",
+    "claim": "Demo — sample data, nothing is saved",
+    "where": "demo banner and landing action",
+    "test": "npm test -- --grep @claim:demo-isolated",
+    "sandbox": "fresh browser context at /demo; inspect localStorage after one move"
+  },
+  {
+    "id": "keyboard-controls",
+    "claim": "Use arrows, taps, or the controls",
+    "where": "How the daily run works",
+    "test": "npm test -- --grep @claim:keyboard-controls",
+    "sandbox": "fresh browser context at /demo; choose a tool and press ArrowRight"
+  },
+  {
+    "id": "end-screen",
+    "claim": "A run has a score and end screen",
+    "where": "game run summary",
+    "test": "npm test -- --grep @claim:end-screen",
+    "sandbox": "fresh browser context with deterministic completed demo replay; observe end screen and restart"
+  },
+  {
+    "id": "local-only",
+    "claim": "Scores stay on your device",
+    "where": "What Dawn Run does not do and privacy page",
+    "test": "npm test -- --grep @claim:local-only",
+    "sandbox": "fresh browser context at /demo; record every request during tool selection and a move"
+  },
+  {
+    "id": "shared-seed",
+    "claim": "One shared daily seed",
+    "where": "landing facts and run panel",
+    "test": "npm test -- --grep @claim:shared-seed",
+    "sandbox": "two fresh browser pages at /demo; compare displayed daily seeds"
+  },
+  {
+    "id": "free-play",
+    "claim": "Free to play",
+    "where": "landing facts",
+    "test": "npm test -- --grep @claim:free-play",
+    "sandbox": "fresh browser context at /; assert no account or payment control accompanies the visible free start"
+  },
+  {
+    "id": "six-rooms",
+    "claim": "Six rooms",
+    "where": "landing headline, run panel, and README",
+    "test": "npm test -- --grep @claim:six-rooms",
+    "sandbox": "fresh browser context at /demo; observe the fixed room count in the playable run panel"
+  }
+]
