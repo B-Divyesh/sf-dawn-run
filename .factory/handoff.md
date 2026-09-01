@@ -32,7 +32,7 @@ Live checks at `https://dawn-run.sociobot.in` passed:
 - Root 200 with CSP, `Referrer-Policy`, and `X-Content-Type-Options`; CSP includes `frame-ancestors 'none'`.
 - Hashed JavaScript uses `Cache-Control: public, max-age=31536000, immutable`; `/sw.js` uses `Cache-Control: no-cache`.
 - `/not-a-real-route` returns 404.
-- `verify-url.sh` recorded a 675 ms root load, no console/page errors, `lang=en`, one h1, one main landmark, no images missing alt, and no unlabeled buttons. Evidence is in `.factory/evidence-repair-1/` in the repair workspace.
+- `verify-url.sh` recorded a 615 ms root load, no console/page errors, `lang=en`, one h1, one main landmark, no images missing alt, and no unlabeled buttons. Evidence is in `.factory/evidence-repair-1/` in the repair workspace.
 - Live mobile smoke checks at 390×844 passed for `/`, `/demo`, `/privacy`, and `/terms`: one h1/main, no horizontal overflow, route-specific titles, and no console errors.
 - Playwright's bundled axe integration passed WCAG A/AA checks on `/`, `/demo`, `/privacy`, and `/terms`. The standalone `npx @axe-core/cli` was attempted but its Selenium wrapper could not discover the preinstalled Playwright Chrome binary; no product issue was reported by the integrated axe suite.
 
