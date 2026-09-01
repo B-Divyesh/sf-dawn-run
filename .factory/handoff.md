@@ -2,7 +2,7 @@
 
 ## Status: deployed
 
-Repair commit: `1a46870` (`Repair seeded daily runs and sandbox recovery`), pushed to `main` and deployed to `https://dawn-run.sociobot.in` on 2026-09-01 UTC.
+Repair commits: `1a46870` (`Repair seeded daily runs and sandbox recovery`) and `9c62630` (`Keep clipboard fallback CSP compliant`), pushed to `main` and deployed to `https://dawn-run.sociobot.in` on 2026-09-01 UTC.
 
 ## What changed
 
@@ -21,7 +21,7 @@ From a clean dependency install, `npm test` passed 21 Playwright tests. `npm run
 
 The built and live JavaScript SHA-256 values matched:
 
-`8254224203bbc41a20b9acc457b5c3538e908df2c96d1a522120878cfc82d6dd`
+`89cb5728c7bb57e0660c0fe7438e673743df06a569fd5e367c10fba14d798f49`
 
 The built and live service-worker SHA-256 values matched:
 
