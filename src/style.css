@@ -456,6 +456,11 @@ button:disabled {
   opacity: .64;
   box-shadow: none;
 }
+.copy-buffer {
+  position: fixed;
+  opacity: 0;
+  pointer-events: none;
+}
 .how,
 .plain {
   max-width: 1240px;
