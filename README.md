@@ -15,10 +15,12 @@ Open the local URL shown by Vite. Open `/demo` (or `/?demo=1`) for the isolated 
 
 ```sh
 npm test
+npm run typecheck
+npm run lint
 npm run build
 ```
 
-The Playwright suite checks the demo boundary, seed-generated rooms, keyboard and touch recovery, real win/loss/cash-out runs, comparison import, offline reload, local-only requests, 55+ fps sampling, and WCAG AA axe baseline. The deployable static site is written to `dist/`.
+The Playwright suite checks the demo boundary, seed-generated rooms, keyboard and touch recovery, real win/loss/cash-out runs, comparison import, offline `/demo` navigation, local-only requests, 55+ fps sampling, and WCAG AA axe baseline. The deployable static site is written to `dist/`.
 
 ## How it works
 

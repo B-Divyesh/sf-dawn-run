@@ -18,3 +18,19 @@ test('load has no console errors', async ({ page }) => {
   await page.waitForTimeout(300);
   expect(errors).toEqual([]);
 });
+
+test('all visible interactive targets meet the 44px mobile baseline', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const path of ['/', '/demo', '/privacy', '/terms']) {
+    await page.goto(path);
+    const undersized = await page.locator('a, button, input').evaluateAll(elements => elements.flatMap(element => {
+      const box = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden';
+      return visible && (box.width < 44 || box.height < 44)
+        ? [{ label: (element.textContent || element.getAttribute('aria-label') || '').trim(), width: box.width, height: box.height }]
+        : [];
+    }));
+    expect(undersized, `${path} has undersized targets`).toEqual([]);
+  }
+});

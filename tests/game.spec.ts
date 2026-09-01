@@ -64,17 +64,31 @@ test('@claim:end-screen title to win, loss, cash-out, and restart use only game 
 });
 
 test('@claim:shared-seed a displayed date seed produces matching rooms and a new date changes them', async ({ browser }) => {
-  const first = await browser.newPage(); const second = await browser.newPage(); const tomorrow = await browser.newPage();
-  await freezeDate(first, '2026-09-01T12:00:00.000Z'); await freezeDate(second, '2026-09-01T12:00:00.000Z'); await freezeDate(tomorrow, '2026-09-02T12:00:00.000Z');
-  await Promise.all([first.goto('/demo'), second.goto('/demo'), tomorrow.goto('/demo')]);
-  for (const page of [first, second, tomorrow]) await page.evaluate(() => localStorage.setItem('demo:player', 'aaa'));
-  await Promise.all([first.reload(), second.reload(), tomorrow.reload()]);
-  for (const page of [first, second, tomorrow]) await page.locator('[data-tool]').first().click();
-  const snapshot = async (page: Page) => page.locator('[role="gridcell"]').evaluateAll(cells => cells.map(cell => cell.getAttribute('aria-label')));
-  const [sameA, sameB, changed] = await Promise.all([snapshot(first), snapshot(second), snapshot(tomorrow)]);
-  expect(await first.locator('.run-meta b').textContent()).toBe(await second.locator('.run-meta b').textContent());
-  expect(sameA).toEqual(sameB); expect(changed).not.toEqual(sameA);
-  await Promise.all([first.close(), second.close(), tomorrow.close()]);
+  const captureRoute = async (iso: string) => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      await freezeDate(page, iso);
+      await page.addInitScript(() => localStorage.setItem('demo:player', 'aaa'));
+      await page.goto('/demo');
+      const displayedSeed = await page.locator('.run-meta b').innerText();
+      await page.locator('[data-tool]').first().click();
+      const cells = await page.locator('[role="gridcell"]').evaluateAll(items => items.map(item => item.getAttribute('aria-label')));
+      return { displayedSeed, cells };
+    } finally {
+      await context.close();
+    }
+  };
+
+  // Keep each independent client isolated and sequential. Concurrent pages made
+  // this claim contend with service-worker startup and hid the removed seed UI.
+  const sameA = await captureRoute('2026-09-01T12:00:00.000Z');
+  const sameB = await captureRoute('2026-09-01T12:00:00.000Z');
+  const changed = await captureRoute('2026-09-02T12:00:00.000Z');
+  expect(sameA.displayedSeed).toBe(sameB.displayedSeed);
+  expect(sameA.cells).toEqual(sameB.cells);
+  expect(changed.displayedSeed).not.toBe(sameA.displayedSeed);
+  expect(changed.cells).not.toEqual(sameA.cells);
 });
 
 test('@claim:tool-offers each player receives two personal tool offers', async ({ page }) => {
@@ -143,12 +157,28 @@ test('@claim:run-duration the game states its planned five to seven minute sessi
 });
 
 test('@claim:offline-reload a demo reload works offline after its first visit', async ({ browser }) => {
-  const context = await browser.newContext(); const page = await context.newPage();
-  await page.goto('/demo'); await page.evaluate(() => navigator.serviceWorker.ready);
-  await page.reload(); await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  await context.setOffline(true); await page.goto('/demo');
-  await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
-  await context.close();
+  const context = await browser.newContext({ serviceWorkers: 'allow' });
+  try {
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+    await page.reload();
+    await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
+    const cachedPaths = await page.evaluate(async () => (await caches.open('dawn-run-20260901-repair-2')).keys().then(keys => keys.map(key => new URL(key.url).pathname)));
+    expect(cachedPaths).toContain('/index.html');
+    expect(cachedPaths).toContain('/demo');
+    expect(cachedPaths.some(path => path.startsWith('/assets/'))).toBeTruthy();
+
+    await context.setOffline(true);
+    await page.goto('/demo', { waitUntil: 'domcontentloaded' });
+    await expect(page).toHaveURL('/demo');
+    await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
+    await expect(page.getByText('Demo — sample data, nothing is saved')).toBeVisible();
+  } finally {
+    await context.setOffline(false);
+    await context.close();
+  }
 });
 
 test('static delivery config protects CSP, real 404s, immutable assets, and service-worker updates', () => {
@@ -156,7 +186,7 @@ test('static delivery config protects CSP, real 404s, immutable assets, and serv
   expect(config.globalHeaders['Content-Security-Policy']).toContain("frame-ancestors 'none'");
   expect(config.routes.find(route => route.route === '/assets/*')?.headers?.['Cache-Control']).toContain('immutable');
   expect(config.responseOverrides['404']).toEqual({ rewrite: '/404.html', statusCode: 404 });
-  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260901-repair-1"); expect(worker).toContain('caches.delete');
+  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260901-repair-2"); expect(worker).toContain('caches.delete');
 });
 
 test('@claim:free-play the start screen has no payment or account flow', async ({ page }) => {

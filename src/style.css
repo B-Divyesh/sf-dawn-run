@@ -95,7 +95,9 @@ nav {
   font-weight: 700;
 }
 nav a,
-footer a {
+footer a,
+.legal a {
+  min-width: 44px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -517,6 +519,10 @@ footer {
 footer small {
   grid-column: 1/-1;
   color: #42514c;
+}
+.footer-links {
+  display: flex;
+  gap: 8px;
 }
 .route-live {
   position: absolute;
