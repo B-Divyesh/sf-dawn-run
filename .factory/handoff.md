@@ -13,7 +13,7 @@ Repair commit: `1a46870` (`Repair seeded daily runs and sandbox recovery`), push
 - The board is a 30-cell named `grid`: every row, column, player, exit, rock, token, bramble, and watcher state is available in the accessibility tree.
 - All visible header, footer, demo, and game controls meet the 44 px target baseline. The How it works navigation now scrolls and moves focus to its section. The privacy copy no longer claims a nonexistent settings screen.
 - The service worker precaches the built hashed shell assets, uses a deploy-versioned cache, and removes old Dawn Run caches. The static delivery configuration now ships in `dist/`, sends CSP including `frame-ancestors 'none'`, gives hashed assets immutable caching, keeps `sw.js` no-cache, and returns the designed 404 with status 404.
-- Claims were expanded to 14 observable browser checks, including real title-to-win/loss/cash-out/restart, seed-controlled maps, demo exit cleanup, touch recovery, comparison, accessibility, offline reload, storage recovery, 55+ fps sampling, and the 5–7 minute session statement.
+- Claims were expanded to 15 observable browser checks, including real title-to-win/loss/cash-out/restart, seed-controlled maps, demo exit cleanup, touch recovery, comparison, accessibility, offline reload, storage recovery, 55+ fps sampling, and the 5–7 minute session statement.
 
 ## Verification
 
