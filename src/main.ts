@@ -4,131 +4,98 @@ type Tool = 'Hook' | 'Dash' | 'Lantern';
 type Phase = 'choose' | 'play' | 'cashout' | 'end' | 'pause';
 type Point = { x: number; y: number };
 type Room = { walls: Point[]; coins: Point[]; hazard: Point; enemy: Point };
-type Game = { phase: Phase; room: number; tool: Tool | null; player: Point; health: number; coins: number; log: string[]; pausedFrom?: Phase; message: string; roomUsed: boolean; finished?: 'escaped' | 'cashed out' | 'caught'; cleared: string[]; collected: string[]; enemy: Point | null };
+type Result = 'escaped' | 'cashed out' | 'caught';
+type Game = { phase: Phase; room: number; tool: Tool | null; player: Point; health: number; coins: number; log: string[]; pausedFrom?: 'play'; message: string; roomUsed: boolean; finished?: Result; cleared: string[]; collected: string[]; enemy: Point | null };
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
-const demo = location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
 const today = new Date().toISOString().slice(0, 10);
-const key = `${demo ? 'demo:' : 'dawn:'}run:${today}`;
-const idKey = demo ? 'demo:player' : 'dawn:player';
-let playerId = localStorage.getItem(idKey);
-if (!playerId) { playerId = Math.random().toString(36).slice(2, 8); localStorage.setItem(idKey, playerId); }
-
-function hash(input: string) { let h = 2166136261; for (const c of input) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }
+const tools: Tool[] = ['Hook', 'Dash', 'Lantern'];
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const demo = () => location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
+const prefix = () => demo() ? 'demo:' : 'dawn:';
+const runKey = () => `${prefix()}run:${today}`;
+const idKey = () => `${prefix()}player`;
+function hash(input: string) { let value = 2166136261; for (const char of input) value = Math.imul(value ^ char.charCodeAt(0), 16777619); return value >>> 0; }
+function rng(seed: number) { return () => { seed |= 0; seed = seed + 0x6d2b79f5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const seed = hash(today).toString(36).toUpperCase();
-const toolSet: Tool[] = ['Hook', 'Dash', 'Lantern'];
-const offers = [0, 1, 2].map(i => toolSet[(i + hash(playerId! + today)) % 3]);
-const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
-
-function newGame(): Game { return { phase: 'choose', room: 1, tool: null, player: { x: 0, y: 2 }, health: 3, coins: 0, log: [], message: 'Pick one tool for all six rooms.', roomUsed: false, cleared: [], collected: [], enemy: null }; }
-function load(): Game { try { const saved = localStorage.getItem(key); return saved ? JSON.parse(saved) as Game : newGame(); } catch { return newGame(); } }
-let game = load();
-function save() { localStorage.setItem(key, JSON.stringify(game)); }
-
-function roomFor(number: number): Room {
-  const layouts: Room[] = [
-    { walls: [{x:2,y:1}], coins:[{x:1,y:3}], hazard:{x:3,y:2}, enemy:{x:4,y:0} },
-    { walls: [{x:2,y:3},{x:3,y:3}], coins:[{x:3,y:1}], hazard:{x:4,y:2}, enemy:{x:3,y:4} },
-    { walls: [{x:1,y:1},{x:3,y:2}], coins:[{x:2,y:4}], hazard:{x:4,y:1}, enemy:{x:4,y:4} },
-    { walls: [{x:2,y:0},{x:2,y:2}], coins:[{x:3,y:3}], hazard:{x:4,y:3}, enemy:{x:3,y:0} },
-    { walls: [{x:1,y:3},{x:3,y:1}], coins:[{x:2,y:1},{x:4,y:4}], hazard:{x:4,y:2}, enemy:{x:3,y:4} },
-    { walls: [{x:1,y:1},{x:2,y:3},{x:3,y:1}], coins:[{x:2,y:0},{x:4,y:3}], hazard:{x:4,y:2}, enemy:{x:3,y:4} }
-  ];
-  return clone(layouts[number - 1]);
-}
 function same(a: Point, b: Point) { return a.x === b.x && a.y === b.y; }
-function pointKey(room: number, p: Point) { return `${room}:${p.x},${p.y}`; }
-function inBoard(p: Point) { return p.x >= 0 && p.x < 6 && p.y >= 0 && p.y < 5; }
+function pointKey(room: number, value: Point) { return `${room}:${value.x},${value.y}`; }
+function inBoard(value: Point) { return value.x >= 0 && value.x < 6 && value.y >= 0 && value.y < 5; }
+function playerId() { let id = localStorage.getItem(idKey()); if (!id) { id = Math.random().toString(36).slice(2, 8); localStorage.setItem(idKey(), id); } return id; }
+function offers() { const excluded = hash(`${playerId()}:${today}:offer`) % 3; return tools.filter((_, index) => index !== excluded); }
+function newGame(): Game { return { phase: 'choose', room: 1, tool: null, player: { x: 0, y: 2 }, health: 3, coins: 0, log: [], message: 'Pick one tool for all six rooms.', roomUsed: false, cleared: [], collected: [], enemy: null }; }
+function point(value: unknown): value is Point { return !!value && typeof value === 'object' && Number.isInteger((value as Point).x) && Number.isInteger((value as Point).y); }
+function validGame(value: unknown): value is Game { if (!value || typeof value !== 'object') return false; const game = value as Partial<Game>; return ['choose', 'play', 'cashout', 'end', 'pause'].includes(game.phase || '') && Number.isInteger(game.room) && game.room! >= 1 && game.room! <= 6 && (game.tool === null || tools.includes(game.tool as Tool)) && point(game.player) && Number.isInteger(game.health) && game.health! >= 0 && game.health! <= 3 && Number.isInteger(game.coins) && Array.isArray(game.log) && game.log.every(item => typeof item === 'string') && typeof game.message === 'string' && typeof game.roomUsed === 'boolean' && Array.isArray(game.cleared) && Array.isArray(game.collected) && (game.enemy === null || point(game.enemy)); }
+function load(): Game { try { const stored = localStorage.getItem(runKey()); if (!stored) return newGame(); const parsed: unknown = JSON.parse(stored); return validGame(parsed) ? parsed : newGame(); } catch { return newGame(); } }
+let game = load();
+let discardingDemo = false;
+function save() { localStorage.setItem(runKey(), JSON.stringify(game)); }
+
+function choosePoint(random: () => number, choices: Point[], used: Point[] = []) { const available = choices.filter(choice => !used.some(item => same(choice, item))); return clone(available[Math.floor(random() * available.length)] || choices[0]); }
+/** The printed daily seed is the source for every room layout; the middle trail stays clear so the game remains learnable. */
+function roomFor(room: number): Room {
+  const random = rng(hash(`${seed}:room:${room}`));
+  const slots = [{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:1,y:1},{x:3,y:1},{x:4,y:1},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4}];
+  const walls: Point[] = [];
+  while (walls.length < (room === 6 ? 4 : 2 + room % 2)) walls.push(choosePoint(random, slots, walls));
+  const free = slots.filter(slot => !walls.some(wall => same(slot, wall)));
+  const hazard = room === 1 ? {x:0,y:1} : choosePoint(random, free);
+  const firstCoin = choosePoint(random, free, [hazard]);
+  const secondCoin = choosePoint(random, free, [hazard, firstCoin]);
+  const enemy = choosePoint(random, [{x:5,y:4},{x:5,y:0},{x:4,y:4},{x:4,y:0}]);
+  return { walls, coins: [firstCoin, secondCoin], hazard, enemy };
+}
 function score() { return Math.max(0, (game.room - 1) * 100 + game.coins * 25 + game.health * 20); }
-function directionLabel(dx: number, dy: number) { return dx === 1 ? 'E' : dx === -1 ? 'W' : dy === 1 ? 'S' : 'N'; }
+function direction(dx: number, dy: number) { return dx === 1 ? 'E' : dx === -1 ? 'W' : dy === 1 ? 'S' : 'N'; }
+function replay() { return `Dawn Run v1 | seed=${seed} | tool=${game.tool} | result=${game.finished} | score=${score()} | replay=${game.log.join('-') || 'none'}`; }
 
 function choose(tool: Tool) { game = newGame(); game.tool = tool; game.phase = 'play'; game.message = `${tool} packed. Reach the flag in each room.`; save(); render(); }
-function move(dx: number, dy: number) {
-  if (game.phase !== 'play') return;
-  const room = roomFor(game.room); const next = { x: game.player.x + dx, y: game.player.y + dy };
-  if (!inBoard(next) || room.walls.some(w => same(w, next) && !game.cleared.includes(pointKey(game.room, w)))) { game.message = 'That route is blocked. Try another tile or use your tool.'; render(); return; }
-  game.player = next; game.log.push(`R${game.room}${directionLabel(dx,dy)}`);
-  collectAndResolve(room);
-  if (game.phase === 'play') enemyTurn(room);
-  if (game.phase === 'play' && same(game.player, {x:5,y:2})) advance();
-  save(); render();
-}
-function collectAndResolve(room: Room) {
-  const coin = room.coins.find(c => same(c, game.player) && !game.collected.includes(pointKey(game.room,c)));
-  if (coin) { game.collected.push(pointKey(game.room,coin)); game.coins++; game.message = 'You found a dawn token.'; }
-  if (same(game.player, room.hazard)) { game.health--; game.message = 'The bramble cost one health.'; }
-  if (game.health <= 0) end('caught');
-}
+function end(result: Result) { game.phase = 'end'; game.finished = result; game.message = result === 'escaped' ? 'You crossed the final flag.' : result === 'cashed out' ? 'You banked a careful score.' : 'The dawn route closed behind you.'; }
+function collect(room: Room) { const coin = room.coins.find(item => same(item, game.player) && !game.collected.includes(pointKey(game.room, item))); if (coin) { game.collected.push(pointKey(game.room, coin)); game.coins++; game.message = 'You found a dawn token.'; } if (same(game.player, room.hazard)) { game.health--; game.message = 'The bramble cost one health.'; } if (game.health <= 0) end('caught'); }
 function enemyTurn(room: Room) {
   if (game.room === 1) return;
   if (!game.enemy) game.enemy = clone(room.enemy);
-  const steps = game.room === 6 ? 2 : 1;
-  for (let i = 0; i < steps; i++) {
-    const enemy: Point = game.enemy!; const dx = Math.sign(game.player.x - enemy.x); const dy = Math.sign(game.player.y - enemy.y);
-    const candidate: Point = Math.abs(game.player.x - enemy.x) >= Math.abs(game.player.y - enemy.y) ? {x:enemy.x + dx,y:enemy.y} : {x:enemy.x,y:enemy.y + dy};
-    if (inBoard(candidate) && !room.walls.some(w => same(w,candidate) && !game.cleared.includes(pointKey(game.room,w)))) game.enemy = candidate;
-    const current: Point = game.enemy!;
-    if (same(current, game.player)) { game.health--; game.message = 'The watcher caught up. Move on.'; game.enemy = {x: Math.max(0, current.x - 1), y: current.y}; if (game.health <= 0) { end('caught'); return; } }
+  for (let step = 0; step < (game.room === 6 ? 2 : 1); step++) {
+    const watcher: Point = game.enemy!;
+    const dx = Math.sign(game.player.x - watcher.x);
+    const dy = Math.sign(game.player.y - watcher.y);
+    const next: Point = Math.abs(game.player.x - watcher.x) >= Math.abs(game.player.y - watcher.y) ? {x: watcher.x + dx, y: watcher.y} : {x: watcher.x, y: watcher.y + dy};
+    if (inBoard(next) && !room.walls.some(wall => same(wall, next) && !game.cleared.includes(pointKey(game.room, wall)))) game.enemy = next;
+    if (same(game.enemy!, game.player)) { game.health--; game.message = 'The watcher caught up. Move on.'; game.enemy = clone(room.enemy); if (game.health <= 0) { end('caught'); return; } }
   }
 }
-function useTool() {
-  if (game.phase !== 'play' || game.roomUsed || !game.tool) return;
-  const room = roomFor(game.room);
-  if (game.tool === 'Hook') {
-    const target = room.walls.find(w => Math.abs(w.x-game.player.x)+Math.abs(w.y-game.player.y) === 1 && !game.cleared.includes(pointKey(game.room,w)));
-    if (!target) { game.message = 'Stand beside a rock to use the hook.'; render(); return; }
-    game.cleared.push(pointKey(game.room,target)); game.log.push(`R${game.room}H`); game.roomUsed = true; game.message = 'The hook clears a route.';
-  } else if (game.tool === 'Dash') {
-    const target = {x: Math.min(5, game.player.x + 2), y: game.player.y};
-    if (room.walls.some(w => same(w,target) && !game.cleared.includes(pointKey(game.room,w)))) { game.message='The dash route is blocked.'; render(); return; }
-    game.player = target; game.log.push(`R${game.room}D`); game.roomUsed = true; game.message = 'You dash east two tiles.'; collectAndResolve(room); if (game.phase === 'play') enemyTurn(room); if (same(game.player,{x:5,y:2})) advance();
-  } else { game.health = Math.min(3, game.health + 1); game.roomUsed = true; game.log.push(`R${game.room}L`); game.message = 'The lantern restores one health.'; }
-  save(); render();
-}
-function advance() {
-  if (game.room === 5) { game.phase = 'cashout'; game.message = 'You reached the fifth flag. Take the score or face the final chase.'; return; }
-  if (game.room === 6) { end('escaped'); return; }
-  game.room++; game.player = {x:0,y:2}; game.enemy = null; game.roomUsed = false; game.message = `Room ${game.room}. The watcher now moves after you.`;
-}
-function continueFinal() { game.phase='play'; game.room=6; game.player={x:0,y:2}; game.enemy=null; game.roomUsed=false; game.log.push('CHASE'); game.message='Final chase: the watcher moves twice after each step.'; save(); render(); }
-function end(result: 'escaped' | 'cashed out' | 'caught') { game.phase='end'; game.finished=result; game.message = result === 'escaped' ? 'You crossed the final flag.' : result === 'cashed out' ? 'You banked a careful score.' : 'The dawn route closed behind you.'; }
+function advance() { if (game.room === 5) { game.phase = 'cashout'; game.message = 'You reached the fifth flag. Take the score or face the final chase.'; return; } if (game.room === 6) { end('escaped'); return; } game.room++; game.player = {x:0,y:2}; game.enemy = null; game.roomUsed = false; game.message = `Room ${game.room}. The watcher now moves after you.`; }
+function move(dx: number, dy: number) { if (game.phase !== 'play') return; const room = roomFor(game.room); const next = {x:game.player.x + dx,y:game.player.y + dy}; if (!inBoard(next) || room.walls.some(wall => same(wall, next) && !game.cleared.includes(pointKey(game.room, wall)))) { game.message = 'That route is blocked. Try another tile or use your tool.'; save(); render(); return; } game.player = next; game.log.push(`R${game.room}${direction(dx, dy)}`); collect(room); if (game.phase === 'play') enemyTurn(room); if (game.phase === 'play' && same(game.player, {x:5,y:2})) advance(); save(); render(); }
+function useTool() { if (game.phase !== 'play' || !game.tool) return; if (game.roomUsed) { game.message = "This room's tool use is spent."; save(); render(); return; } const room = roomFor(game.room); if (game.tool === 'Hook') { const target = room.walls.find(wall => Math.abs(wall.x - game.player.x) + Math.abs(wall.y - game.player.y) === 1 && !game.cleared.includes(pointKey(game.room, wall))); if (!target) { game.message = 'Stand beside a rock to use the hook.'; save(); render(); return; } game.cleared.push(pointKey(game.room, target)); game.log.push(`R${game.room}H`); game.roomUsed = true; game.message = 'The hook clears a route.'; } else if (game.tool === 'Dash') { const target = {x:Math.min(5, game.player.x + 2),y:game.player.y}; if (room.walls.some(wall => same(wall, target) && !game.cleared.includes(pointKey(game.room, wall)))) { game.message = 'The dash route is blocked.'; save(); render(); return; } game.player = target; game.log.push(`R${game.room}D`); game.roomUsed = true; game.message = 'You dash east two tiles.'; collect(room); if (game.phase === 'play') enemyTurn(room); if (same(game.player, {x:5,y:2})) advance(); } else { game.health = Math.min(3, game.health + 1); game.roomUsed = true; game.log.push(`R${game.room}L`); game.message = 'The lantern restores one health.'; } save(); render(); }
+function finalChase() { game.phase = 'play'; game.room = 6; game.player = {x:0,y:2}; game.enemy = null; game.roomUsed = false; game.log.push('CHASE'); game.message = 'Final chase: the watcher moves twice after each step.'; save(); render(); }
 function cashOut() { end('cashed out'); save(); render(); }
-function restart() { localStorage.removeItem(key); game = newGame(); render(); }
-function resetDemo() { localStorage.removeItem(key); localStorage.removeItem(idKey); location.assign('/demo'); }
-function goReal() { if (demo) location.assign('/'); }
+function restart() { localStorage.removeItem(runKey()); game = newGame(); render(); }
+function pause() { if (game.phase === 'play') { game.pausedFrom = 'play'; game.phase = 'pause'; game.message = 'Paused. Resume when you are ready.'; save(); render(); } }
+function resume() { if (game.phase === 'pause') { game.phase = game.pausedFrom || 'play'; game.message = 'Run resumed.'; save(); render(); } }
+function clearDemo() { Object.keys(localStorage).filter(key => key.startsWith('demo:')).forEach(key => localStorage.removeItem(key)); }
+function resetDemo() { discardingDemo = true; clearDemo(); location.assign('/demo'); }
+function goReal() { discardingDemo = true; clearDemo(); location.assign('/'); }
+async function copyText(text: string) { try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; } } catch { /* use the selection fallback below */ } const area = document.createElement('textarea'); area.value = text; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select(); const copied = document.execCommand('copy'); area.remove(); if (!copied) throw new Error('copy unavailable'); }
+async function copyResult() { try { await copyText(replay()); game.message = 'Result copied. Paste it into Compare a copied result.'; } catch { game.message = 'Copy is unavailable here. Select the replay text to copy it.'; } save(); render(); }
+async function shareResult() { const share: ((data: ShareData) => Promise<void>) | undefined = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share; try { if (share) await share({title:'Dawn Run result',text:replay()}); else await copyText(replay()); game.message = share ? 'Share sheet opened.' : 'Result copied to share.'; } catch { game.message = 'Sharing was cancelled. Your result remains on this device.'; } save(); render(); }
+function saveComparison() { localStorage.setItem(`${prefix()}comparison:${today}`, replay()); game.message = 'Your result is saved for comparison on this device.'; save(); render(); }
+function compareResult() { const input = document.querySelector<HTMLInputElement>('#comparison-input'); const output = document.querySelector<HTMLElement>('#comparison-result'); const match = /seed=([^|]+)\s*\|\s*tool=(Hook|Dash|Lantern)\s*\|\s*result=(escaped|cashed out|caught)\s*\|\s*score=(\d+)\s*\|\s*replay=(.+)$/i.exec(input?.value.trim() || ''); if (!output) return; if (!match) { output.textContent = 'That result is not in Dawn Run replay format. Copy a complete result and try again.'; return; } output.textContent = `${match[1].trim() === seed ? 'Same daily route.' : 'Different daily route.'} Their ${match[2]} run ${match[3].toLowerCase()} with ${match[4]} points. Replay: ${match[5].trim()}.`; }
 
-function cardTool(tool: Tool) { const desc: Record<Tool,string> = { Hook:'Clear one rock beside you.', Dash:'Move east two tiles once per room.', Lantern:'Restore one health once per room.' }; return `<button class="tool" data-tool="${tool}"><span class="tool-name">${tool}</span><span>${desc[tool]}</span></button>`; }
-function board() {
-  const room = roomFor(game.room); const cells = Array.from({length:30}, (_,i) => { const p={x:i%6,y:Math.floor(i/6)}; let type='ground'; let label='Open route';
-    if (same(p,{x:5,y:2})) { type='exit'; label='Exit flag'; }
-    if (room.walls.some(w=>same(w,p)) && !game.cleared.includes(pointKey(game.room,p))) { type='wall'; label='Rock'; }
-    if (room.coins.some(c=>same(c,p)) && !game.collected.includes(pointKey(game.room,p))) { type='coin'; label='Dawn token'; }
-    if (same(room.hazard,p)) { type='hazard'; label='Bramble, costs health'; }
-    if (game.room > 1 && same(game.enemy || room.enemy,p)) { type='enemy'; label='Watcher'; }
-    if (same(game.player,p)) { type='player'; label='You'; }
-    return `<div class="tile ${type}" aria-label="${label}"><span aria-hidden="true">${type==='player'?'●':type==='exit'?'⚑':type==='wall'?'▦':type==='coin'?'✦':type==='hazard'?'✕':type==='enemy'?'◉':''}</span></div>`; }).join('');
-  return `<section class="board-wrap" aria-label="Room ${game.room} board"><div class="map-key"><span><i class="dot you"></i>You</span><span><i class="dot flag"></i>Exit</span><span><i class="dot watch"></i>Watcher</span></div><div class="board">${cells}</div></section>`;
-}
-function gameView() {
-  if (game.phase==='choose') return `<section class="game-panel choose"><div class="run-meta"><span>DAILY SEED <b>${seed}</b></span><span>6 ROOMS</span></div><h2>Choose one tool</h2><p>Each tool changes one small decision in every room.</p><div class="tool-grid">${offers.map(cardTool).join('')}</div><p class="small">The route is shared today. Your tool offer is personal.</p></section>`;
-  if (game.phase==='cashout') return `<section class="game-panel result"><p class="eyebrow">ROOM FIVE COMPLETE</p><h2>Cash out or take the final chase?</h2><p>Your current score is <strong>${score()}</strong>. The last watcher moves twice per turn.</p><div class="actions"><button class="primary" data-action="final">Run the final chase</button><button class="secondary" data-action="cash">Cash out with ${score()}</button></div></section>`;
-  if (game.phase==='end') return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2>${game.finished === 'escaped' ? 'You escaped the sixth room.' : game.finished === 'cashed out' ? 'You cashed out after five rooms.' : 'The watcher ended this run.'}</h2><dl class="score"><div><dt>Score</dt><dd>${score()}</dd></div><div><dt>Health</dt><dd>${game.health}/3</dd></div><div><dt>Route</dt><dd>${game.log.length} moves</dd></div></dl><p class="replay"><b>Replay data:</b> ${seed}.${game.tool}.${game.log.join('-') || 'none'}</p><button class="primary" data-action="restart">Start a fresh practice run</button><p class="small">Saved only in this browser. Copy the replay data to compare choices.</p></section>`;
-  const controls = [['↑',0,-1,'Up'],['←',-1,0,'Left'],['↓',0,1,'Down'],['→',1,0,'Right']];
-  return `<section class="game-panel play"><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(3-game.health)}</b></span><span>SCORE <b>${score()}</b></span></div>${board()}<p class="status" aria-live="polite">${game.message}</p><div class="actions"><button class="primary" data-action="tool">Use ${game.tool}${game.roomUsed?' (used)':''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${controls.map(([a,x,y,name])=>`<button aria-label="Move ${name}" data-move="${x},${y}">${a}</button>`).join('')}</div><p class="small input-note">Arrow keys move. Escape pauses.</p></section>`;
-}
-function shell(content: string, page: string) { return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo?`<aside class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></aside>`:''}<main id="main" tabindex="-1">${content}</main><footer><span>One shared route for a short daily tactical run.</span><span><a href="/privacy" data-nav>Privacy</a> <a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v1.0</span><small>Illustration texture is original generated imagery.</small></footer><div class="route-live" aria-live="polite"></div>`; }
-function landing() { return shell(`<section class="hero"><div class="hero-copy"><p class="eyebrow">A DAILY BROWSER GAME</p><h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a short tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Loads a sample run. Nothing is saved.</span></div><ul class="facts"><li>Free to play</li><li>One shared daily seed</li><li>Saved in this browser</li></ul></div><div class="hero-art" aria-label="A printed sunrise route map with a six-room game preview">${gameView()}</div></section><section id="how" class="how"><h2>How the daily run works</h2><ol><li><b>Pick a tool.</b> Choose a hook, dash, or lantern.</li><li><b>Route six rooms.</b> Use arrows, taps, or the controls.</li><li><b>Share your result.</b> Copy the seed and replay data after the run.</li></ol></section><section class="plain"><h2>What Dawn Run does not do</h2><p>Scores stay on your device. Replay data is shown after your run.</p></section>`, 'home'); }
-function privacy() { return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores a current run, settings, and a random local player code in your browser.</p><p>The game does not send this data to a server. Clearing site data removes it.</p><p>The demo uses separate browser keys that start with <code>demo:</code>. Reset demo removes those keys.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`, 'privacy'); }
-function terms() { return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game. It is provided as-is for personal play.</p><p>Do not rely on local scores as permanent records. You may share your replay data with other players.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`, 'terms'); }
-function render() { const path=location.pathname; document.title = path==='/privacy' ? 'Privacy — Dawn Run' : path==='/terms' ? 'Terms — Dawn Run' : demo ? 'Demo — Dawn Run' : 'Dawn Run — Play a six-room daily run'; app.innerHTML=path==='/privacy'?privacy():path==='/terms'?terms():landing(); requestAnimationFrame(() => document.querySelector<HTMLElement>('h1')?.focus({preventScroll:true})); }
-
-document.addEventListener('click', event => { const target=(event.target as HTMLElement).closest<HTMLElement>('[data-action],[data-tool],[data-move],[data-nav]'); if (!target) return;
-  if (target.dataset.nav !== undefined) { event.preventDefault(); history.pushState({},'',(target as HTMLAnchorElement).href); render(); return; }
-  const action=target.dataset.action; if (target.dataset.tool) choose(target.dataset.tool as Tool); else if (target.dataset.move) { const [x,y]=target.dataset.move.split(',').map(Number); move(x,y); } else if (action==='tool') useTool(); else if(action==='pause') { game.pausedFrom=game.phase; game.phase='pause'; game.message='Paused. Press Escape to resume.'; render(); } else if(action==='final') continueFinal(); else if(action==='cash') cashOut(); else if(action==='restart') restart(); else if(action==='sample') location.assign('/demo'); else if(action==='reset-demo') resetDemo(); else if(action==='real') goReal(); });
-window.addEventListener('popstate', render);
-window.addEventListener('keydown', event => { if (event.key==='Escape' && game.phase==='pause') { game.phase=game.pausedFrom||'play'; game.message='Run resumed.'; save(); render(); return; } if (event.key==='Escape' && game.phase==='play') { game.pausedFrom='play'; game.phase='pause'; render(); return; } const keys: Record<string,[number,number]>={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}; if(keys[event.key]) { event.preventDefault(); move(...keys[event.key]); } });
-document.addEventListener('visibilitychange', () => { if (document.hidden && game.phase==='play') { game.pausedFrom='play'; game.phase='pause'; save(); render(); } });
-// Fixed 60 Hz heartbeat keeps game timing stable as the board grows.
-let last=performance.now(), acc=0; function loop(now:number) { acc+=Math.min(250,now-last); last=now; while(acc>=1000/60){ acc-=1000/60; } requestAnimationFrame(loop); } requestAnimationFrame(loop);
-if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js'));
+function toolCard(tool: Tool) { const text: Record<Tool,string> = {Hook:'Clear one rock beside you.',Dash:'Move east two tiles once per room.',Lantern:'Restore one health once per room.'}; return `<button class="tool" data-tool="${tool}"><span class="tool-name">${tool}</span><span>${text[tool]}</span></button>`; }
+function board() { const room = roomFor(game.room); const cells = Array.from({length:30}, (_, index) => { const cell = {x:index % 6,y:Math.floor(index / 6)}; let type = 'ground'; let label = 'open route'; if (same(cell,{x:5,y:2})) { type='exit'; label='exit flag'; } if (room.walls.some(wall => same(wall,cell)) && !game.cleared.includes(pointKey(game.room,cell))) { type='wall'; label='rock, blocked'; } if (room.coins.some(coin => same(coin,cell)) && !game.collected.includes(pointKey(game.room,cell))) { type='coin'; label='dawn token'; } if (same(room.hazard,cell)) { type='hazard'; label='bramble, costs one health'; } if (game.room > 1 && same(game.enemy || room.enemy,cell)) { type='enemy'; label='watcher'; } if (same(game.player,cell)) { type='player'; label='you are here'; } const icon = type === 'player' ? '●' : type === 'exit' ? '⚑' : type === 'wall' ? '▦' : type === 'coin' ? '✦' : type === 'hazard' ? '✕' : type === 'enemy' ? '◉' : ''; return `<div class="tile ${type}" role="gridcell" data-cell="${cell.x},${cell.y}" aria-label="Row ${cell.y + 1}, column ${cell.x + 1}: ${label}"><span aria-hidden="true">${icon}</span></div>`; }).join(''); return `<section class="board-wrap" aria-label="Room ${game.room} board"><p class="map-key" id="board-key"><span><i class="dot you"></i>You</span><span><i class="dot flag"></i>Exit</span><span><i class="dot watch"></i>Watcher</span></p><div class="board" role="grid" aria-label="Room ${game.room} tactical board, six columns and five rows" aria-describedby="board-key">${cells}</div></section>`; }
+function endView() { const heading = game.finished === 'escaped' ? 'You escaped the sixth room.' : game.finished === 'cashed out' ? 'You cashed out after five rooms.' : 'The watcher ended this run.'; return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2>${heading}</h2><dl class="score"><div><dt>Score</dt><dd>${score()}</dd></div><div><dt>Health</dt><dd>${game.health}/3</dd></div><div><dt>Route</dt><dd>${game.log.length} moves</dd></div></dl><p class="replay" id="replay-data"><b>Replay data:</b> ${replay()}</p><p class="status" aria-live="polite">${game.message}</p><div class="actions"><button class="primary" data-action="copy">Copy result</button><button class="secondary" data-action="share">Share result</button><button class="secondary" data-action="save-comparison">Save for comparison</button></div><section class="comparison" aria-labelledby="comparison-heading"><h3 id="comparison-heading">Compare a copied result</h3><label for="comparison-input">Paste a Dawn Run result</label><div class="comparison-row"><input id="comparison-input" autocomplete="off"><button class="secondary" data-action="compare">Compare result</button></div><p id="comparison-result" aria-live="polite">Compare the daily seed, tool, score, and replay with another player.</p></section><button class="primary" data-action="restart">Start a fresh practice run</button><p class="small">Results stay on this device until you copy or share them.</p></section>`; }
+function gameView() { if (game.phase === 'choose') return `<section class="game-panel choose"><div class="run-meta"><span>DAILY SEED <b>${seed}</b></span><span>6 ROOMS</span></div><h2>Choose one tool</h2><p>Each player receives two personal tool offers for the same daily map.</p><div class="tool-grid">${offers().map(toolCard).join('')}</div><p class="small">The route is shared today. Your choices are personal.</p></section>`; if (game.phase === 'cashout') return `<section class="game-panel result"><p class="eyebrow">ROOM FIVE COMPLETE</p><h2>Cash out or take the final chase?</h2><p>Your current score is <strong>${score()}</strong>. The last watcher moves twice per turn.</p><div class="actions"><button class="primary" data-action="final">Run the final chase</button><button class="secondary" data-action="cash">Cash out with ${score()}</button></div></section>`; if (game.phase === 'end') return endView(); if (game.phase === 'pause') return `<section class="game-panel result"><p class="eyebrow">RUN PAUSED</p><h2>Resume your run</h2><p>Your room, score, and tool are saved in this browser.</p><button class="primary" data-action="resume">Resume run</button><p class="small">Press Escape or tap Resume run.</p></section>`; const directions = [['↑',0,-1,'Up'],['←',-1,0,'Left'],['↓',0,1,'Down'],['→',1,0,'Right']]; return `<section class="game-panel play"><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(3-game.health)}</b></span><span>SCORE <b>${score()}</b></span></div>${board()}<p class="status" aria-live="polite">${game.message}</p><div class="actions"><button class="primary" data-action="tool" ${game.roomUsed ? 'disabled aria-disabled="true"' : ''}>Use ${game.tool}${game.roomUsed ? ' (used)' : ''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${directions.map(([symbol,x,y,name]) => `<button aria-label="Move ${name}" data-move="${x},${y}">${symbol}</button>`).join('')}</div><p class="small input-note">Arrow keys or these controls move. Escape pauses.</p></section>`; }
+function shell(content: string) { return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo() ? `<aside class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></aside>` : ''}<main id="main" tabindex="-1">${content}</main><footer><span>One shared route for a short daily tactical run.</span><span><a href="/privacy" data-nav>Privacy</a> <a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v1.1</span><small>Illustration texture is original generated imagery.</small></footer><div class="route-live" aria-live="polite"></div>`; }
+function landing() { return shell(`<section class="hero"><div class="hero-copy"><p class="eyebrow">A DAILY BROWSER GAME</p><h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a short tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Loads a sample run. Nothing is saved.</span></div><ul class="facts"><li>Free to play</li><li>One shared seeded route</li><li>Works offline after the first visit</li><li>Saved in this browser</li><li>Designed for a 5–7 minute session.</li></ul></div><div class="hero-art" aria-label="A printed sunrise route map with a six-room game preview">${gameView()}</div></section><section id="how" class="how" tabindex="-1"><h2>How the daily run works</h2><ol><li><b>Pick a tool.</b> Receive two personal tool offers.</li><li><b>Route six rooms.</b> Use arrows, taps, or the controls.</li><li><b>Compare a result.</b> Copy, share, or paste replay data after a run.</li></ol></section><section class="plain"><h2>What Dawn Run does not do</h2><p>Scores stay on your device. Sharing only happens when you choose Copy result or Share result.</p></section>`); }
+function privacy() { return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores a current run, a local player code, and optional saved comparison data in your browser.</p><p>The game does not send this data to a server. Clearing site data removes it.</p><p>The demo uses separate browser keys that start with <code>demo:</code>. Reset demo and Start for real remove those keys.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`); }
+function terms() { return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game. It is provided as-is for personal play.</p><p>Local scores are not permanent records. You can copy a result to compare it with another player.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`); }
+function setMeta(path: string) { const title = path === '/privacy' ? 'Privacy — Dawn Run' : path === '/terms' ? 'Terms — Dawn Run' : demo() ? 'Demo — Dawn Run' : 'Dawn Run — Play a six-room daily run'; const description = path === '/privacy' ? 'How Dawn Run stores local game data.' : path === '/terms' ? 'Terms for the Dawn Run browser game.' : demo() ? 'Try an isolated sample Dawn Run.' : 'Play one six-room tactical run each day and compare a shared seed.'; document.title = title; document.querySelector('meta[name="description"]')?.setAttribute('content', description); document.querySelector('link[rel="canonical"]')?.setAttribute('href', `https://dawn-run.sociobot.in${path}`); document.querySelector('meta[property="og:title"]')?.setAttribute('content', title); document.querySelector('meta[property="og:description"]')?.setAttribute('content', description); }
+function render(focus = true) { const path = location.pathname; setMeta(path); app.innerHTML = path === '/privacy' ? privacy() : path === '/terms' ? terms() : landing(); document.querySelector<HTMLElement>('.route-live')!.textContent = document.title; requestAnimationFrame(() => { if (location.hash === '#how') { const target = document.querySelector<HTMLElement>('#how'); target?.scrollIntoView({block:'start'}); target?.focus({preventScroll:true}); } else if (focus) document.querySelector<HTMLElement>('h1')?.focus({preventScroll:true}); }); }
+function navigate(href: string) { history.pushState({}, '', href); game = load(); render(); }
+document.addEventListener('click', event => { const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action],[data-tool],[data-move],[data-nav]'); if (!target) return; if (target.dataset.nav !== undefined) { event.preventDefault(); navigate((target as HTMLAnchorElement).getAttribute('href') || '/'); return; } const action = target.dataset.action; if (target.dataset.tool) choose(target.dataset.tool as Tool); else if (target.dataset.move) { const [x,y] = target.dataset.move.split(',').map(Number); move(x,y); } else if (action === 'tool') useTool(); else if (action === 'pause') pause(); else if (action === 'resume') resume(); else if (action === 'final') finalChase(); else if (action === 'cash') cashOut(); else if (action === 'restart') restart(); else if (action === 'sample') location.assign('/demo'); else if (action === 'reset-demo') resetDemo(); else if (action === 'real') goReal(); else if (action === 'copy') void copyResult(); else if (action === 'share') void shareResult(); else if (action === 'save-comparison') saveComparison(); else if (action === 'compare') compareResult(); });
+window.addEventListener('popstate', () => { game = load(); render(); });
+window.addEventListener('keydown', event => { if (event.key === 'Escape') { if (game.phase === 'pause') resume(); else if (game.phase === 'play') pause(); return; } const keys: Record<string,[number,number]> = {ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}; if (keys[event.key] && game.phase === 'play') { event.preventDefault(); move(...keys[event.key]); } });
+document.addEventListener('visibilitychange', () => { if (!discardingDemo && document.hidden && game.phase === 'play') pause(); });
+let last = performance.now(), accumulator = 0; function loop(now: number) { accumulator += Math.min(250, now-last); last = now; while (accumulator >= 1000/60) accumulator -= 1000/60; requestAnimationFrame(loop); } requestAnimationFrame(loop);
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
 render();

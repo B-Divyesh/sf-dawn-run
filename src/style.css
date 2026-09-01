@@ -74,6 +74,9 @@ header {
   background: var(--paper);
 }
 .wordmark {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
   font:
     700 26px Georgia,
@@ -90,6 +93,12 @@ nav {
   flex-wrap: wrap;
   font-size: 15px;
   font-weight: 700;
+}
+nav a,
+footer a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 main {
   min-height: calc(100vh - 180px);
@@ -112,7 +121,8 @@ main {
   border: 1px solid var(--paper);
   background: transparent;
   color: var(--paper);
-  padding: 4px 8px;
+  min-height: 44px;
+  padding: 8px 12px;
   font-weight: 700;
 }
 .hero {
@@ -407,6 +417,45 @@ h2 {
   padding: 12px;
   font-size: 13px;
 }
+.comparison {
+  margin: 24px 0;
+  padding: 16px;
+  border: 2px solid var(--ink);
+  background: var(--fog);
+}
+.comparison h3 {
+  margin: 0 0 10px;
+  font: 700 22px Georgia, serif;
+}
+.comparison label {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.comparison-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.comparison input {
+  min-width: 0;
+  flex: 1;
+  min-height: 48px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px;
+}
+.comparison p {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: .64;
+  box-shadow: none;
+}
 .how,
 .plain {
   max-width: 1240px;
@@ -515,6 +564,9 @@ footer small {
   }
   .score dd {
     font-size: 22px;
+  }
+  .comparison-row {
+    flex-direction: column;
   }
 }
 @media (max-width: 390px) {

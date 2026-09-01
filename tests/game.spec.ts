@@ -1,65 +1,168 @@
-import { expect, test } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
-test('@claim:demo-isolated demo uses only its own browser storage', async ({ page }) => {
+const demoPlayer = async (page: Page) => {
   await page.goto('/demo');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('demo:player', 'aaa'); });
+  await page.reload();
+};
+const east = async (page: Page, count = 5) => { for (let step = 0; step < count; step++) await page.keyboard.press('ArrowRight'); };
+const lanternRunToFive = async (page: Page) => {
+  await demoPlayer(page);
+  await page.getByRole('button', { name: /Lantern/ }).click();
+  for (let room = 1; room <= 5; room++) { await page.getByRole('button', { name: /Use Lantern/ }).click(); await east(page); }
+  await expect(page.getByRole('heading', { name: 'Cash out or take the final chase?' })).toBeVisible();
+};
+const win = async (page: Page) => {
+  await lanternRunToFive(page);
+  await page.getByRole('button', { name: 'Run the final chase' }).click();
+  await page.getByRole('button', { name: /Use Lantern/ }).click();
+  await east(page);
+  await expect(page.getByRole('heading', { name: 'You escaped the sixth room.' })).toBeVisible();
+};
+const freezeDate = async (page: Page, iso: string) => page.addInitScript(({ iso: value }) => {
+  const RealDate = Date;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  class FixedDate extends RealDate { constructor(...args: any[]) { super(...(args.length ? args : [value])); } static now() { return new RealDate(value).valueOf(); } }
+  // @ts-expect-error test browser Date replacement
+  window.Date = FixedDate;
+}, { iso });
+
+test('@claim:demo-isolated header demo stays isolated and exit clears every demo key', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Demo' }).click();
   await expect(page.getByText('Demo — sample data, nothing is saved')).toBeVisible();
   await page.locator('[data-tool]').first().click();
   await page.keyboard.press('ArrowRight');
-  const keys = await page.evaluate(() => Object.keys(localStorage));
-  expect(keys.some(key => key.startsWith('demo:run:'))).toBeTruthy();
-  expect(keys.some(key => key.startsWith('dawn:run:'))).toBeFalsy();
+  expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('demo:run:')))).toBeTruthy();
+  expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('dawn:run:')))).toBeFalsy();
+  await page.getByRole('button', { name: 'Start for real' }).click();
+  await expect(page).toHaveURL('/');
+  expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('demo:')))).toBeFalsy();
 });
 
-test('@claim:keyboard-controls arrow keys make a move', async ({ page }) => {
-  await page.goto('/demo');
+test('@claim:keyboard-controls keyboard and touch controls move the player', async ({ page }) => {
+  await demoPlayer(page);
   await page.locator('[data-tool]').first().click();
   await page.keyboard.press('ArrowRight');
-  const run = await page.evaluate(() => JSON.parse(localStorage.getItem(`demo:run:${new Date().toISOString().slice(0, 10)}`) || '{}'));
-  expect(run.log).toContain('R1E');
-  await page.locator('[data-move="0,1"]').click();
-  const tapped = await page.evaluate(() => JSON.parse(localStorage.getItem(`demo:run:${new Date().toISOString().slice(0, 10)}`) || '{}'));
-  expect(tapped.log).toContain('R1S');
+  await expect(page.getByRole('gridcell', { name: /Row 3, column 2: you are here/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Move Right' }).click();
+  await expect(page.getByRole('gridcell', { name: /Row 3, column 3: you are here/ })).toBeVisible();
 });
 
-test('@claim:end-screen a run can reach its end screen and restart', async ({ page }) => {
-  await page.goto('/demo');
-  await page.evaluate(() => {
-    const key = `demo:run:${new Date().toISOString().slice(0, 10)}`;
-    localStorage.setItem(key, JSON.stringify({ phase:'end', room:6, tool:'Hook', player:{x:5,y:2}, health:2, coins:4, log:['R1E','R2E','R3E','R4E','R5E','CHASE','R6E'], message:'You crossed the final flag.', roomUsed:false, cleared:[], collected:[], enemy:null, finished:'escaped' }));
-  });
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'You escaped the sixth room.' })).toBeVisible();
+test('@claim:end-screen title to win, loss, cash-out, and restart use only game input', async ({ page }) => {
+  await win(page);
   await page.getByRole('button', { name: 'Start a fresh practice run' }).click();
   await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
-});
-
-test('@claim:local-only no third-party requests occur during a demo run', async ({ page, baseURL }) => {
-  const requests: string[] = [];
-  page.on('request', request => requests.push(request.url()));
-  await page.goto('/demo');
+  await demoPlayer(page);
   await page.locator('[data-tool]').first().click();
-  await page.keyboard.press('ArrowRight');
-  expect(requests.every(url => url.startsWith(baseURL!))).toBeTruthy();
+  for (let hit = 0; hit < 3; hit++) { await page.keyboard.press('ArrowUp'); if (hit < 2) await page.keyboard.press('ArrowDown'); }
+  await expect(page.getByRole('heading', { name: 'The watcher ended this run.' })).toBeVisible();
+  await lanternRunToFive(page);
+  await page.getByRole('button', { name: /Cash out with/ }).click();
+  await expect(page.getByRole('heading', { name: 'You cashed out after five rooms.' })).toBeVisible();
 });
 
-test('@claim:shared-seed the daily seed matches across fresh players', async ({ browser }) => {
-  const first = await browser.newPage();
-  const second = await browser.newPage();
-  await Promise.all([first.goto('/demo'), second.goto('/demo')]);
-  const seeds = await Promise.all([first.locator('.run-meta b').textContent(), second.locator('.run-meta b').textContent()]);
-  expect(seeds[0]).toBeTruthy();
-  expect(seeds[0]).toBe(seeds[1]);
-  await first.close();
-  await second.close();
+test('@claim:shared-seed a displayed date seed produces matching rooms and a new date changes them', async ({ browser }) => {
+  const first = await browser.newPage(); const second = await browser.newPage(); const tomorrow = await browser.newPage();
+  await freezeDate(first, '2026-09-01T12:00:00.000Z'); await freezeDate(second, '2026-09-01T12:00:00.000Z'); await freezeDate(tomorrow, '2026-09-02T12:00:00.000Z');
+  await Promise.all([first.goto('/demo'), second.goto('/demo'), tomorrow.goto('/demo')]);
+  for (const page of [first, second, tomorrow]) await page.evaluate(() => localStorage.setItem('demo:player', 'aaa'));
+  await Promise.all([first.reload(), second.reload(), tomorrow.reload()]);
+  for (const page of [first, second, tomorrow]) await page.locator('[data-tool]').first().click();
+  const snapshot = async (page: Page) => page.locator('[role="gridcell"]').evaluateAll(cells => cells.map(cell => cell.getAttribute('aria-label')));
+  const [sameA, sameB, changed] = await Promise.all([snapshot(first), snapshot(second), snapshot(tomorrow)]);
+  expect(await first.locator('.run-meta b').textContent()).toBe(await second.locator('.run-meta b').textContent());
+  expect(sameA).toEqual(sameB); expect(changed).not.toEqual(sameA);
+  await Promise.all([first.close(), second.close(), tomorrow.close()]);
+});
+
+test('@claim:tool-offers each player receives two personal tool offers', async ({ page }) => {
+  await page.goto('/demo');
+  await expect(page.locator('[data-tool]')).toHaveCount(2);
+  await expect(page.getByText('Each player receives two personal tool offers for the same daily map.')).toBeVisible();
+});
+
+test('@claim:comparison copy/share/import flow compares a completed result', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { (window as Window & { copiedResult?: string }).copiedResult = value; } } }));
+  await win(page);
+  const data = await page.locator('#replay-data').innerText();
+  await page.getByRole('button', { name: 'Copy result' }).click();
+  await expect(page.getByText('Result copied. Paste it into Compare a copied result.')).toBeVisible();
+  expect(await page.evaluate(() => (window as Window & { copiedResult?: string }).copiedResult)).toContain('Dawn Run v1');
+  await page.locator('#comparison-input').fill(data.replace('Replay data: ', ''));
+  await page.getByRole('button', { name: 'Compare result' }).click();
+  await expect(page.locator('#comparison-result')).toContainText('Same daily route.');
+  await page.getByRole('button', { name: 'Save for comparison' }).click();
+  expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('demo:comparison:')))).toBeTruthy();
+});
+
+test('@claim:resume-touch an interrupted mobile run reloads and resumes with a touch target', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  await demoPlayer(page); await page.locator('[data-tool]').first().click(); await page.getByRole('button', { name: 'Move Right' }).click();
+  await page.getByRole('button', { name: 'Pause' }).click(); await page.reload();
+  await expect(page.getByRole('heading', { name: 'Resume your run' })).toBeVisible();
+  await page.getByRole('button', { name: 'Resume run' }).tap();
+  await page.getByRole('button', { name: 'Move Right' }).tap();
+  await expect(page.getByRole('gridcell', { name: /Row 3, column 3: you are here/ })).toBeVisible();
+  await context.close();
+});
+
+test('@claim:accessible-board every playable coordinate is exposed to assistive technology', async ({ page }) => {
+  await demoPlayer(page); await page.locator('[data-tool]').first().click();
+  await expect(page.getByRole('grid', { name: /Room 1 tactical board/ })).toBeVisible();
+  await expect(page.getByRole('gridcell')).toHaveCount(30);
+  await expect(page.getByRole('gridcell', { name: /Row 3, column 1: you are here/ })).toBeVisible();
+  await expect(page.getByRole('gridcell', { name: /Row 3, column 6: exit flag/ })).toBeVisible();
+});
+
+test('@claim:local-only no third-party requests occur during a full demo win', async ({ page, baseURL }) => {
+  const requests: string[] = []; page.on('request', request => requests.push(request.url()));
+  await win(page); expect(requests.every(url => url.startsWith(baseURL!))).toBeTruthy();
+});
+
+test('@claim:storage-recovery malformed and incomplete stored runs recover to tool selection', async ({ page }) => {
+  await page.goto('/demo');
+  await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{}'));
+  await page.reload(); await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
+  await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{bad json'));
+  await page.reload(); await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
+});
+
+test('@claim:frame-rate the fixed simulation heartbeat keeps at least 55 fps', async ({ page }) => {
+  await page.goto('/demo');
+  const fps = await page.evaluate(() => new Promise<number>(resolve => { const frames: number[] = []; const sample = (now: number) => { frames.push(now); if (frames.length === 61) { const duration = frames[60] - frames[0]; resolve(60000 / duration); } else requestAnimationFrame(sample); }; requestAnimationFrame(sample); }));
+  expect(fps).toBeGreaterThanOrEqual(55);
+});
+
+test('@claim:run-duration the game states its planned five to seven minute session length', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Designed for a 5–7 minute session.')).toBeVisible();
+});
+
+test('@claim:offline-reload a demo reload works offline after its first visit', async ({ browser }) => {
+  const context = await browser.newContext(); const page = await context.newPage();
+  await page.goto('/demo'); await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload(); await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await context.setOffline(true); await page.goto('/demo');
+  await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
+  await context.close();
+});
+
+test('static delivery config protects CSP, real 404s, immutable assets, and service-worker updates', () => {
+  const config = JSON.parse(readFileSync('public/staticwebapp.config.json', 'utf8')) as { routes: Array<{ route: string; headers?: Record<string, string> }>; globalHeaders: Record<string, string>; responseOverrides: Record<string, { rewrite: string; statusCode: number }> };
+  expect(config.globalHeaders['Content-Security-Policy']).toContain("frame-ancestors 'none'");
+  expect(config.routes.find(route => route.route === '/assets/*')?.headers?.['Cache-Control']).toContain('immutable');
+  expect(config.responseOverrides['404']).toEqual({ rewrite: '/404.html', statusCode: 404 });
+  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260901-repair-1"); expect(worker).toContain('caches.delete');
 });
 
 test('@claim:free-play the start screen has no payment or account flow', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByText('Free to play')).toBeVisible();
-  await expect(page.locator('input, [data-payment], [href*="checkout"]')).toHaveCount(0);
+  await page.goto('/'); await expect(page.getByText('Free to play')).toBeVisible(); await expect(page.locator('input, [data-payment], [href*="checkout"]')).toHaveCount(0);
 });
 
 test('@claim:six-rooms the run panel states the fixed room count', async ({ page }) => {
-  await page.goto('/demo');
-  await expect(page.getByText('6 ROOMS', { exact: true })).toBeVisible();
+  await page.goto('/demo'); await expect(page.getByText('6 ROOMS', { exact: true })).toBeVisible();
 });
