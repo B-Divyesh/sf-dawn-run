@@ -4,5 +4,6 @@ dist/
 *.log
 *.tsbuildinfo
 test-results/
+/.factory/evidence-*/
 graphify-out/
 .DS_Store

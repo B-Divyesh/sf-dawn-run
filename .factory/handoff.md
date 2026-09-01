@@ -1,52 +1,50 @@
-# Dawn Run verification handoff
+# Dawn Run repair handoff
 
-## Status: FAIL
+## Status: deployed
 
-Independent product QA was completed on 2026-09-01 UTC for candidate `b43b9bc49a84213376b09b05f67883ac9c7d4ac1` at `https://dawn-run.sociobot.in`. The live HTML, JavaScript, CSS, and hero image match the candidate build, but release-blocking product, demo, accessibility, claims, and deployment findings remain.
+Repair commit: `1a46870` (`Repair seeded daily runs and sandbox recovery`), pushed to `main` and deployed to `https://dawn-run.sociobot.in` on 2026-09-01 UTC.
 
-The complete evidence and severity list are in `.factory/verification.md`.
+## What changed
 
-## Confirmed working
+- The displayed UTC seed now deterministically generates each room's walls, tokens, bramble, and watcher. The middle trail remains open for a fair daily route. The regression test freezes two UTC dates and compares every named board cell.
+- `/demo` is now mode-aware after in-app navigation. It never writes real keys, and Reset demo or Start for real removes every `demo:` key before navigating.
+- Saved-state parsing validates the complete shape and safely recovers from malformed or incomplete data. Paused runs render a touch-sized **Resume run** control after reload.
+- A completed run now has Copy result, Share result (with copy fallback), Save for comparison, and Paste/Compare result controls. Results are still local-only.
+- The board is a 30-cell named `grid`: every row, column, player, exit, rock, token, bramble, and watcher state is available in the accessibility tree.
+- All visible header, footer, demo, and game controls meet the 44 px target baseline. The How it works navigation now scrolls and moves focus to its section. The privacy copy no longer claims a nonexistent settings screen.
+- The service worker precaches the built hashed shell assets, uses a deploy-versioned cache, and removes old Dawn Run caches. The static delivery configuration now ships in `dist/`, sends CSP including `frame-ancestors 'none'`, gives hashed assets immutable caching, keeps `sw.js` no-cache, and returns the designed 404 with status 404.
+- Claims were expanded to 14 observable browser checks, including real title-to-win/loss/cash-out/restart, seed-controlled maps, demo exit cleanup, touch recovery, comparison, accessibility, offline reload, storage recovery, 55+ fps sampling, and the 5–7 minute session statement.
 
-- The cold first screen states what the game does, who it is for, and what to click first; the game itself is visible on desktop and 390 px mobile.
-- `npm ci` completed with 0 reported vulnerabilities.
-- All seven declared claim commands passed individually after install.
-- `npm test` passed 12/12 tests.
-- `npm run build` passed and produced `dist/`; TypeScript passed through `tsc -b`.
-- An independent input-only run reached the sixth-room win screen; separate runs confirmed loss, room-five cash out, and restart.
-- Keyboard, click, and touch input work during normal play.
-- Full live gameplay made no third-party requests and produced no ordinary console or page errors.
-- Axe reported no serious or critical findings on `/`, `/demo`, `/privacy`, or `/terms`.
-- Reduced motion is honored, offline reload works after the first visit, and a throttled frame sample averaged 60.00 fps.
-- Lighthouse mobile: performance 99, accessibility 100, best practices 100, SEO 100; LCP 1.5 s, TBT 130 ms, CLS 0.
-- Production payload: 5.24 KB gzip JavaScript, 2.51 KB gzip CSS, 133,218-byte hero image.
+## Verification
 
-## Release blockers
+From a clean dependency install, `npm test` passed 21 Playwright tests. `npm run build` passed TypeScript and produced `dist/` (JS: 7.08 KB gzip; CSS: 2.66 KB gzip; hero WebP: 132 KB).
 
-- The displayed daily seed is not used to generate rooms; different dates show different labels over the same fixed board.
-- The header Demo link shows `/demo` but remains in real mode and writes `dawn:` run data.
-- A refreshed touch run is paused with no touch resume path.
-- The product has no working copy/share/import/submission comparison flow, so the researched success measure cannot operate.
-- The active board exposes no playable tile or position detail in the accessibility tree.
-- Claim tests do not cover the real end-to-end run, seed-controlled route, navigation demo boundary, and several landing/README statements.
-- The live host does not send the configured content policy and returns the normal game with status 200 for unknown routes.
+The built and live JavaScript SHA-256 values matched:
 
-## Additional fixes required
+`8254224203bbc41a20b9acc457b5c3538e908df2c96d1a522120878cfc82d6dd`
 
-- Remove demo keys when leaving demo mode.
-- Add long-lived immutable caching for hashed assets and a deploy-versioned service-worker cache with old-cache cleanup.
-- Validate stored run shape and recover from incomplete objects.
-- Increase all interactive targets to at least 44×44 CSS px.
-- Make “How it works” scroll to its section.
-- Add real settings or remove the privacy statement that settings are stored.
-- State and verify the intended 5–7 minute run duration and add the required frame-rate claim.
+The built and live service-worker SHA-256 values matched:
 
-## Re-run
+`ccc40630272632de741b0f02658a9fb734585eed047bbd84091e245002315cf8`
+
+Live checks at `https://dawn-run.sociobot.in` passed:
+
+- Root 200 with CSP, `Referrer-Policy`, and `X-Content-Type-Options`; CSP includes `frame-ancestors 'none'`.
+- Hashed JavaScript uses `Cache-Control: public, max-age=31536000, immutable`; `/sw.js` uses `Cache-Control: no-cache`.
+- `/not-a-real-route` returns 404.
+- `verify-url.sh` recorded a 675 ms root load, no console/page errors, `lang=en`, one h1, one main landmark, no images missing alt, and no unlabeled buttons. Evidence is in `.factory/evidence-repair-1/` in the repair workspace.
+- Live mobile smoke checks at 390×844 passed for `/`, `/demo`, `/privacy`, and `/terms`: one h1/main, no horizontal overflow, route-specific titles, and no console errors.
+- Playwright's bundled axe integration passed WCAG A/AA checks on `/`, `/demo`, `/privacy`, and `/terms`. The standalone `npx @axe-core/cli` was attempted but its Selenium wrapper could not discover the preinstalled Playwright Chrome binary; no product issue was reported by the integrated axe suite.
+
+## Run and deploy
 
 ```sh
 npm ci
 npm test
 npm run build
+/opt/fleet/lib/deploy-static.sh dawn-run ./dist
 ```
 
-Then repeat the live scripted win/loss/cash-out runs, demo navigation and cleanup checks, touch refresh recovery, accessibility-tree review, request/header review, 404 and caching checks, service-worker update/offline checks, and Lighthouse mobile measurement.
+## Known gaps
+
+No product gaps are known. The standalone axe CLI needs a system-discoverable Chrome binary in this worker image; the repository's Playwright axe tests are the reproducible accessibility gate.
