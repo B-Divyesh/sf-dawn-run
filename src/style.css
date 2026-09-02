@@ -262,6 +262,11 @@ h2 {
 .choose p {
   max-width: 40ch;
 }
+.game-heading {
+  font-size: 25px;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
 .tool-grid {
   display: grid;
   gap: 12px;
@@ -281,6 +286,37 @@ h2 {
 .small {
   font-size: 13px;
   margin: 18px 0 0;
+}
+.demo-kicker {
+  color: var(--pine);
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: .12em;
+  margin: 0 0 12px;
+}
+.sample-progress {
+  border-top: 2px solid var(--ink);
+  margin-top: 22px;
+  padding-top: 18px;
+}
+.sample-progress h3 {
+  font: 700 20px Georgia, serif;
+  margin: 0 0 6px;
+}
+.sample-progress h3:nth-of-type(2) {
+  margin-top: 16px;
+}
+.sample-progress ol {
+  list-style: none;
+  margin: 8px 0 16px;
+  padding: 0;
+}
+.sample-progress li {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
 }
 .board-wrap {
   margin: 18px 0;
@@ -695,6 +731,18 @@ footer small {
   .hero {
     grid-template-columns: 1fr;
     padding-top: 42px;
+  }
+  .demo-hero {
+    gap: 20px;
+    padding-top: 28px;
+  }
+  .demo-hero .hero-copy h1 {
+    font-size: clamp(38px, 13vw, 58px);
+    margin-bottom: 12px;
+  }
+  .demo-hero .lede {
+    font-size: 17px;
+    margin-bottom: 0;
   }
   .hero-art {
     min-height: 0;

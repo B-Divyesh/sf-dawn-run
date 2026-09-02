@@ -32,9 +32,8 @@ function shortestPath(game: GameState, target: Point, avoidHazards = true) {
   throw new Error(`No route to ${key(target)} in room ${game.room}`);
 }
 
-function winningActions(date: string, tool: string, stopAfterRoomFive = false) {
-  const seed = seedForDate(date);
-  const game = selectTool(createGame(date), tool, 0);
+function winningActionsFrom(game: GameState, stopAfterRoomFive = false) {
+  const seed = seedForDate(game.date);
   const actions: string[] = [];
   while (game.phase !== 'end') {
     if (game.phase === 'cashout') {
@@ -51,6 +50,10 @@ function winningActions(date: string, tool: string, stopAfterRoomFive = false) {
     }
   }
   return { actions, game };
+}
+
+function winningActions(date: string, tool: string, stopAfterRoomFive = false) {
+  return winningActionsFrom(selectTool(createGame(date), tool, 0), stopAfterRoomFive);
 }
 
 function losingActions(date: string, tool: string) {
@@ -75,9 +78,14 @@ function losingActions(date: string, tool: string) {
 }
 
 async function fresh(page: Page, path = '/demo', player = 'pathfinder-player') {
+  await page.goto('/');
+  await page.evaluate(({ demoPath, id, state }) => {
+    localStorage.clear();
+    const namespace = demoPath ? 'demo:' : 'dawn:';
+    localStorage.setItem(`${namespace}player`, id);
+    localStorage.setItem(`${namespace}run:${new Date().toISOString().slice(0, 10)}`, JSON.stringify(state));
+  }, { demoPath: path === '/demo', id: player, state: createGame(isoToday()) });
   await page.goto(path);
-  await page.evaluate(({ demoPath, id }) => { localStorage.clear(); localStorage.setItem(`${demoPath ? 'demo:' : 'dawn:'}player`, id); }, { demoPath: path === '/demo', id: player });
-  await page.reload();
 }
 
 async function chosenTool(page: Page) { return (await page.locator('[data-tool]').first().locator('.tool-name').innerText()).trim(); }
@@ -112,13 +120,32 @@ const freezeDate = async (page: Page, iso: string) => page.addInitScript(({ iso:
 }, { iso });
 
 test('@claim:demo-isolated header demo stays isolated and exit clears every demo key', async ({ page }) => {
-  await page.goto('/'); await page.getByRole('link', { name: 'Demo' }).click();
+  await page.goto('/?demo=1');
+  await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  await page.goto('/');
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('dawn:')))).toEqual([]);
+  await page.getByRole('button', { name: 'Try it with sample data' }).click();
   await expect(page.getByText('Demo — sample data, nothing is saved')).toBeVisible();
-  await page.locator('[data-tool]').first().click(); await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('heading', { name: 'Continue a sample run' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
+  await expect(page.getByText('One beacon is already lit.')).toBeVisible();
+  await expect(page.getByRole('grid')).toHaveAttribute('aria-label', /1 of three beacons lit/);
+  await expect(page.locator('.sample-progress li')).toHaveCount(2);
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  await page.keyboard.press('ArrowRight');
   expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('demo:run:')))).toBeTruthy();
-  expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('dawn:run:')))).toBeFalsy();
+  expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('dawn:')))).toBeFalsy();
+  const continuedState = await page.evaluate(() => JSON.parse(localStorage.getItem(`demo:run:${new Date().toISOString().slice(0, 10)}`) || 'null') as GameState);
+  await play(page, winningActionsFrom(continuedState).actions); await expect(page.getByRole('heading', { name: 'You escaped the sixth room.' })).toBeVisible();
+  await page.getByRole('button', { name: 'Check sample submission' }).click(); await expect(page.locator('#leaderboard-status')).toContainText('not published');
+  await page.getByRole('button', { name: 'Reset demo', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  await page.keyboard.press('ArrowRight');
   await page.getByRole('button', { name: 'Start for real' }).click(); await expect(page).toHaveURL('/');
   expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('demo:')))).toBeFalsy();
+  expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('dawn:')))).toBeFalsy();
 });
 
 test('@claim:keyboard-controls keyboard and touch controls move the player', async ({ page }) => {
@@ -129,7 +156,7 @@ test('@claim:keyboard-controls keyboard and touch controls move the player', asy
 
 test('@claim:end-screen deterministic input reaches win, loss, cash-out, and restart screens', async ({ page }) => {
   await win(page);
-  await page.getByRole('button', { name: 'Start a fresh practice run' }).click(); await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
+  await page.getByRole('button', { name: 'Restart this sample run' }).click(); await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
   await fresh(page); const tool = await chosenTool(page); await page.locator('[data-tool]').first().click(); await play(page, losingActions(isoToday(), tool));
   await expect(page.getByRole('heading', { name: 'The watcher ended this run.' })).toBeVisible();
   await fresh(page); const cashTool = await chosenTool(page); await page.locator('[data-tool]').first().click();
@@ -139,8 +166,8 @@ test('@claim:end-screen deterministic input reaches win, loss, cash-out, and res
 
 test('@claim:shared-seed same-date clients match and another date changes every generated route', async ({ browser }) => {
   const capture = async (iso: string) => {
-    const context = await browser.newContext(); const page = await context.newPage(); await freezeDate(page, iso); await page.addInitScript(() => localStorage.setItem('demo:player', 'seed-player')); await page.goto('/demo');
-    const displayedSeed = await page.locator('.run-meta b').innerText(); await page.locator('[data-tool]').first().click();
+    const context = await browser.newContext(); const page = await context.newPage(); await freezeDate(page, iso); await page.goto('/demo');
+    const displayedSeed = await page.locator('.run-meta b').first().innerText();
     const cells = await page.getByRole('gridcell').evaluateAll(items => items.map(item => item.getAttribute('aria-label'))); await context.close(); return { displayedSeed, cells };
   };
   const a = await capture('2026-09-01T12:00:00Z'); const b = await capture('2026-09-01T12:00:00Z'); const changed = await capture('2026-09-02T12:00:00Z');
@@ -160,7 +187,7 @@ test('@claim:tool-offers each player gets three working tools from five and offe
 test('@claim:comparison copied completed replay compares seed, score, time, and actions', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (value: string) => { (window as Window & { copied?: string }).copied = value; } } }));
-  await win(page); const replay = (await page.locator('#replay-data').innerText()).replace(/^Replay data:\s*/, '');
+  await win(page); const replay = (await page.locator('#replay-data').innerText()).replace(/^Move record:\s*/, '');
   await page.getByRole('button', { name: 'Copy result' }).click(); expect(await page.evaluate(() => (window as Window & { copied?: string }).copied)).toContain('Dawn Run v2');
   await page.locator('#comparison-input').fill(replay); await page.getByRole('button', { name: 'Compare result' }).click(); await expect(page.locator('#comparison-result')).toContainText('Same daily route.');
 });
@@ -186,10 +213,58 @@ test('@claim:score-publishing completed replay is verified, published, and retur
 });
 
 test('@claim:settings-history settings and completed history persist across reload', async ({ page }) => {
-  await fresh(page); await page.getByText('Settings and run history').click(); await page.getByLabel('Show board coordinates').check(); await page.getByLabel('Reduce visual effects').check(); await page.reload();
-  await page.getByText('Settings and run history').click(); await expect(page.getByLabel('Show board coordinates')).toBeChecked(); await expect(page.getByLabel('Reduce visual effects')).toBeChecked();
-  const tool = await chosenTool(page); await page.locator('[data-tool]').first().click(); const route = winningActions(isoToday(), tool); await play(page, route.actions);
-  await page.getByText('Settings and run history').click(); await expect(page.locator('.history li')).toHaveCount(1); await expect(page.locator('.history')).toContainText('escaped');
+  test.setTimeout(60_000);
+  await fresh(page, '/'); await page.getByText('Settings and run history').click(); await page.getByLabel('Show board coordinates').check(); await page.getByLabel('Reduce visual effects').check();
+  let expectedBest = 0;
+  for (let run = 0; run < 9; run++) {
+    const tool = await chosenTool(page); await page.locator('[data-tool]').first().click();
+    for (let loop = 0; loop < run; loop++) { await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowLeft'); }
+    const route = winningActions(isoToday(), tool); await play(page, route.actions);
+    expectedBest = Math.max(expectedBest, Number(await page.locator('.score dd').first().innerText()));
+    if (run < 8) await page.getByRole('button', { name: 'Start a fresh practice run' }).click();
+  }
+  await page.reload(); await page.getByText('Settings and run history').click();
+  await expect(page.getByLabel('Show board coordinates')).toBeChecked(); await expect(page.getByLabel('Reduce visual effects')).toBeChecked();
+  await expect(page.locator('.history li')).toHaveCount(8); await expect(page.locator('.history')).toContainText(`Best score: ${expectedBest}`);
+});
+
+test('@claim:publication-consent no score request occurs before explicit publication', async ({ page }) => {
+  const scoreRequests: { method: string; body: string | null }[] = [];
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/scores') scoreRequests.push({ method: request.method(), body: request.postData() }); });
+  await win(page, '/'); expect(scoreRequests).toEqual([]);
+  await page.getByRole('button', { name: 'Publish verified score' }).click();
+  await expect(page.locator('#leaderboard-status')).toContainText('published');
+  expect(scoreRequests).toHaveLength(1); expect(scoreRequests[0].method).toBe('POST');
+  expect(Object.keys(JSON.parse(scoreRequests[0].body || '{}')).sort()).toEqual(['actions', 'date', 'demo', 'durationSeconds', 'nickname', 'result', 'score', 'seed', 'tool']);
+});
+
+test('@claim:hook-tool Hook clears one adjacent named rock and is spent for the room', async ({ page }) => {
+  const state = selectTool(createGame(isoToday()), 'Hook', 1); const room = roomFor(seedForDate(isoToday()), 1); const rock = room.walls[0];
+  const neighbor = directions.map(direction => ({ x: rock.x - direction.dx, y: rock.y - direction.dy })).find(point => point.x >= 0 && point.x < 9 && point.y >= 0 && point.y < 7 && !room.walls.some(wall => key(wall) === key(point)))!;
+  state.player = neighbor; await page.goto('/'); await page.evaluate(value => { localStorage.clear(); localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, JSON.stringify(value)); }, state); await page.goto('/demo'); await page.getByRole('button', { name: 'Resume run' }).click();
+  await expect(page.locator(`[data-cell="${rock.x},${rock.y}"]`)).toHaveAttribute('aria-label', /rock, blocked/); await page.getByRole('button', { name: 'Use Hook' }).click();
+  await expect(page.locator(`[data-cell="${rock.x},${rock.y}"]`)).toHaveAttribute('aria-label', /open route/); await expect(page.getByRole('button', { name: 'Use Hook (used)' })).toBeDisabled();
+});
+
+test('@claim:dash-tool Dash moves east two tiles once and reports a blocked boundary', () => {
+  const game = selectTool(createGame(isoToday()), 'Dash', 1); expect(applyAction(game, 'T', seedForDate(isoToday()), 1)).toBeTruthy(); expect(game.player).toEqual({ x: 2, y: 3 }); expect(game.roomUsed).toBeTruthy(); expect(applyAction(game, 'T', seedForDate(isoToday()), 1)).toBeFalsy();
+  const edge = selectTool(createGame(isoToday()), 'Dash', 1); edge.player = { x: 7, y: 3 }; expect(applyAction(edge, 'T', seedForDate(isoToday()), 1)).toBeFalsy(); expect(edge.message).toBe('The dash route is blocked.');
+});
+
+test('@claim:lantern-tool Lantern restores at most two health once per room', () => {
+  const game = selectTool(createGame(isoToday()), 'Lantern', 1); game.health = 4; expect(applyAction(game, 'T', seedForDate(isoToday()), 1)).toBeTruthy(); expect(game.health).toBe(5); expect(game.roomUsed).toBeTruthy(); expect(applyAction(game, 'T', seedForDate(isoToday()), 1)).toBeFalsy(); expect(game.health).toBe(5);
+});
+
+test('@claim:decoy-tool Decoy holds the watcher for six turns and releases it on the next beacon', () => {
+  const game = selectTool(createGame(isoToday()), 'Decoy', 1); game.room = 2; const gameSeed = seedForDate(isoToday()); const room = roomFor(gameSeed, 2); game.enemy = { ...room.enemy }; expect(applyAction(game, 'T', gameSeed, 1)).toBeTruthy(); const start = { ...game.enemy! };
+  for (let turn = 0; turn < 6; turn++) { game.player = { x: 0, y: turn % 2 ? 2 : 3 }; expect(applyAction(game, turn % 2 ? 'D' : 'U', gameSeed, 1)).toBeTruthy(); expect(game.enemy).toEqual(start); }
+  const beacon = room.beacons[0]; const neighbor = directions.map(direction => ({ point: { x: beacon.x - direction.dx, y: beacon.y - direction.dy }, token: direction.token })).find(item => item.point.x >= 0 && item.point.x < 9 && item.point.y >= 0 && item.point.y < 7 && !room.walls.some(wall => key(wall) === key(item.point)))!; game.player = neighbor.point; applyAction(game, neighbor.token, gameSeed, 1); expect(game.enemy).not.toEqual(start);
+});
+
+test('@claim:cloak-tool Cloak blocks the next watcher hit but not the following hit', () => {
+  const game = selectTool(createGame(isoToday()), 'Cloak', 1); game.room = 2; const gameSeed = seedForDate(isoToday()); const room = roomFor(gameSeed, 2); expect(applyAction(game, 'T', gameSeed, 1)).toBeTruthy();
+  const hit = (beacon: Point) => { const neighbor = directions.map(direction => ({ point: { x: beacon.x - direction.dx, y: beacon.y - direction.dy }, token: direction.token })).find(item => item.point.x >= 0 && item.point.x < 9 && item.point.y >= 0 && item.point.y < 7 && !room.walls.some(wall => key(wall) === key(item.point)))!; game.player = neighbor.point; game.enemy = { ...beacon }; applyAction(game, neighbor.token, gameSeed, 1); };
+  hit(room.beacons[0]); expect(game.health).toBe(5); expect(game.shield).toBe(0); hit(room.beacons[1]); expect(game.health).toBe(4);
 });
 
 test('@claim:focus-preserved keyboard focus stays in the game through a complete run', async ({ page }) => {
@@ -203,9 +278,9 @@ test('@claim:local-only full play and explicit publication use only same-origin 
   expect(requests.every(url => url.startsWith(baseURL!))).toBeTruthy();
 });
 
-test('@claim:storage-recovery malformed and incomplete runs recover to tool selection', async ({ page }) => {
-  await page.goto('/demo'); await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{}')); await page.reload(); await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
-  await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{bad')); await page.reload(); await expect(page.getByRole('heading', { name: 'Choose one tool' })).toBeVisible();
+test('@claim:storage-recovery malformed and incomplete runs recover to the sample', async ({ page }) => {
+  await page.goto('/'); await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{}')); await page.goto('/demo'); await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
+  await page.goto('/'); await page.evaluate(() => localStorage.setItem(`demo:run:${new Date().toISOString().slice(0, 10)}`, '{bad')); await page.goto('/demo'); await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
 });
 
 test('@claim:frame-rate fixed simulation heartbeat keeps at least 55 fps', async ({ page }) => {
@@ -222,7 +297,7 @@ test('@claim:run-duration full route provides a measured 5–7 minute tactical i
 
 test('@claim:offline-reload controlled demo reload works offline after the first visit', async ({ browser }) => {
   const context = await browser.newContext({ serviceWorkers: 'allow' }); try { const page = await context.newPage(); await page.goto('/'); await page.evaluate(() => navigator.serviceWorker.ready); await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true); await page.reload();
-    const cached = await page.evaluate(async () => (await caches.open('dawn-run-20260902-repair-5')).keys().then(items => items.map(item => new URL(item.url).pathname))); expect(cached).toContain('/demo');
+    const cached = await page.evaluate(async () => (await caches.open('dawn-run-20260902-polish-1')).keys().then(items => items.map(item => new URL(item.url).pathname))); expect(cached).toContain('/demo');
     await context.setOffline(true); await page.goto('/demo', { waitUntil: 'domcontentloaded' }); await expect(page.getByText('Demo — sample data, nothing is saved')).toBeVisible();
   } finally { await context.setOffline(false); await context.close(); }
 });
@@ -230,8 +305,11 @@ test('@claim:offline-reload controlled demo reload works offline after the first
 test('@claim:response-policy delivery config protects APIs, CSP, 404s, immutable assets, and worker updates', () => {
   const config = JSON.parse(readFileSync('public/staticwebapp.config.json', 'utf8')) as { routes: Array<{ route: string; headers?: Record<string, string> }>; globalHeaders: Record<string, string>; responseOverrides: Record<string, { rewrite: string; statusCode: number }> };
   expect(config.globalHeaders['Content-Security-Policy']).toContain("frame-ancestors 'none'"); expect(config.routes.find(route => route.route === '/assets/*')?.headers?.['Cache-Control']).toContain('immutable'); expect(config.routes.find(route => route.route === '/api/*')?.headers?.['Cache-Control']).toContain('no-store'); expect(config.responseOverrides['404'].statusCode).toBe(404);
-  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain('dawn-run-20260902-repair-5'); expect(worker).toContain("startsWith('/api/')");
+  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain('dawn-run-20260902-polish-1'); expect(worker).toContain("startsWith('/api/')");
 });
 
 test('@claim:free-play start screen has no payment or account flow', async ({ page }) => { await page.goto('/'); await expect(page.getByText('Free to play')).toBeVisible(); await expect(page.locator('[data-payment], [href*="checkout"], [href*="login"]')).toHaveCount(0); });
-test('@claim:six-rooms game states six rooms and eighteen required beacons', async ({ page }) => { await page.goto('/demo'); await expect(page.getByText('6 ROOMS · 18 BEACONS')).toBeVisible(); });
+test('@claim:six-rooms game has six rooms with three required beacons in each', async ({ page }) => {
+  for (let room = 1; room <= 6; room++) expect(roomFor(seedForDate(isoToday()), room).beacons).toHaveLength(3);
+  await page.goto('/demo'); await expect(page.getByText('6 ROOMS · 18 BEACONS')).toBeVisible();
+});

@@ -1,22 +1,21 @@
-# Dawn Run review 1 handoff
+# Dawn Run polish 1 handoff
 
 ## Status
 
-Review completed without product-code changes. Verdict: **FAIL**. The required report is `.factory/review-1.md`.
+Polish round 1 resolves every finding in `.factory/review-1.md`. The production artifact remains a Vite + TypeScript browser game with its existing same-origin score service.
 
-## What was verified
+## What changed
 
-- Fresh live desktop (1440×900) and phone (390×844) first reads.
-- Live demo entry, reset, return-to-real storage behavior, request origins, headers, routes, metadata, crawler targets, 404, keyboard/focus, and full axe scans.
-- Every one of the 19 declared claim commands from a fresh local clone. All passed when run independently.
-- Clean-clone `npm run typecheck`, `npm run lint`, `npm test -- --reporter=line` (6 API tests and 28 Playwright tests), and `npm run build`. All passed and `dist/` was produced.
-- Earlier verification/handoff findings were read and checked; only the previously documented minor `aria-allowed-role` issue remains.
+- Demo entry now shows a realistic active room, lit progress, move history, current score, and sample standings without creating storage.
+- Landing preview initialization no longer writes any `dawn:` key. Reset and Start for real delete the entire demo namespace.
+- Added exact claims and tests for publication consent, all five tools, nine-run persistence, altered-score rejection, demo non-retention, and seven-day expiry.
+- Corrected the banner ARIA role, added full-impact axe coverage, and completed the designed 404 shell and metadata.
+- Rewrote first-screen notes, map-code labels, help steps, move-record language, privacy copy, and the ≤120-character catalog description.
+- Added route-title, canonical, Open Graph, Twitter, history-focus, legal-link, 404, mobile-overflow, and touch-target checks.
 
-## Remaining work
+## Verification
 
-The review lists two blocking demo-sandbox issues, one blocking unresolved prior axe finding, eight claim/copy issues, and an incomplete 404 document. The highest-priority repair is to make `/demo` immediately show a realistic sample game without writing any `dawn:` storage during the landing-to-demo path.
-
-## How to verify after repair
+Run from the repository root:
 
 ```sh
 npm ci
@@ -26,4 +25,12 @@ npm test -- --reporter=line
 npm run build
 ```
 
-Then repeat the cold-browser and claim checks recorded in `.factory/review-1.md`, especially a fresh-context landing → demo flow that asserts visible sample state and zero `dawn:` storage keys.
+Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests passed; `dist/` was produced. The production build contains 31.02 KB JS, 11.07 KB CSS, and a 133.22 KB hero image before compression. Exact clean-clone claim and live verification evidence is recorded below after deployment.
+
+## Deployment and live checks
+
+Pending final production deployment and cold verification.
+
+## Known gaps
+
+None.

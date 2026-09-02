@@ -9,12 +9,14 @@ type LeaderboardItem = { rank?: number; nickname: string; score: number; result:
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const today = new Date().toISOString().slice(0, 10);
 const seed = seedForDate(today);
+const pendingPlayerId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 const demo = () => location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
 const prefix = () => demo() ? 'demo:' : 'dawn:';
 const runKey = () => `${prefix()}run:${today}`;
 const settingsKey = () => `${prefix()}settings`;
 const historyKey = () => `${prefix()}history`;
 const playerKey = () => `${prefix()}player`;
+const previewPlayer = () => demo() ? 'dawn-run-sample-player' : pendingPlayerId;
 const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
 const pointKey = (room: number, value: Point) => `${room}:${value.x},${value.y}`;
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]!);
@@ -22,13 +24,14 @@ const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, char => ({ '&': 
 function playerId() {
   const existing = localStorage.getItem(playerKey());
   if (existing) return existing;
-  const created = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  const created = demo() ? 'dawn-run-sample-player' : pendingPlayerId;
   localStorage.setItem(playerKey(), created);
   return created;
 }
 
 function defaultSettings(): Settings {
-  const code = hashString(playerId()).toString(36).slice(0, 4).toUpperCase().padStart(4, '0');
+  const storedPlayer = localStorage.getItem(playerKey());
+  const code = storedPlayer ? hashString(storedPlayer).toString(36).slice(0, 4).toUpperCase().padStart(4, '0') : demo() ? 'DEMO' : 'DAWN';
   return { coordinates: false, reducedEffects: false, nickname: `Walker-${code}` };
 }
 
@@ -52,18 +55,48 @@ function validGame(value: unknown): value is GameState {
   return state.version === 2 && state.date === today && ['choose', 'play', 'cashout', 'end', 'pause'].includes(state.phase || '') && Number.isInteger(state.room) && state.room! >= 1 && state.room! <= 6 && (state.tool === null || TOOLS.includes(state.tool || '')) && !!state.player && Number.isInteger(state.player.x) && Number.isInteger(state.player.y) && Number.isInteger(state.health) && Number.isInteger(state.beacons) && Array.isArray(state.log) && state.log.every(item => typeof item === 'string') && typeof state.message === 'string' && typeof state.roomUsed === 'boolean' && Array.isArray(state.cleared) && Array.isArray(state.collected) && Number.isInteger(state.turn) && Number.isInteger(state.enemyDelay) && Number.isInteger(state.shield);
 }
 
+function sampleGame() {
+  const sample = selectTool(createGame(today), 'Hook', Date.now() - 58_000) as GameState;
+  const directions = [{ token: 'R', dx: 1, dy: 0 }, { token: 'D', dx: 0, dy: 1 }, { token: 'L', dx: -1, dy: 0 }, { token: 'U', dx: 0, dy: -1 }];
+  const pathTo = (target: Point) => {
+    const room = roomFor(seed, sample.room);
+    const blocked = new Set([...room.walls, ...room.hazards].map(point => `${point.x},${point.y}`));
+    blocked.delete(`${target.x},${target.y}`);
+    const queue = [{ ...sample.player, path: [] as string[] }];
+    const seen = new Set([`${sample.player.x},${sample.player.y}`]);
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (same(current, target)) return current.path;
+      for (const direction of directions) {
+        const next = { x: current.x + direction.dx, y: current.y + direction.dy };
+        const nextKey = `${next.x},${next.y}`;
+        if (next.x < 0 || next.x >= BOARD_WIDTH || next.y < 0 || next.y >= BOARD_HEIGHT || blocked.has(nextKey) || seen.has(nextKey)) continue;
+        seen.add(nextKey); queue.push({ ...next, path: [...current.path, direction.token] });
+      }
+    }
+    return [];
+  };
+  const firstRoom = roomFor(seed, 1);
+  for (const target of [...firstRoom.beacons, firstRoom.exit]) for (const action of pathTo(target)) applyAction(sample, action, seed, Date.now() - 30_000);
+  const roomTwo = roomFor(seed, 2);
+  for (const action of pathTo(roomTwo.beacons[0])) applyAction(sample, action, seed, Date.now() - 10_000);
+  sample.message = 'Sample run in progress. One beacon is lit in room two; guide the walker to the other two.';
+  return sample;
+}
+
 function loadGame() {
   try {
     const stored = localStorage.getItem(runKey());
     const parsed: unknown = stored ? JSON.parse(stored) : null;
-    const loaded = validGame(parsed) ? parsed : createGame(today);
-    if (loaded.phase === 'play') {
+    const validStored = validGame(parsed);
+    const loaded = validStored ? parsed : demo() ? sampleGame() : createGame(today);
+    if (validStored && loaded.phase === 'play') {
       loaded.pausedFrom = 'play';
       loaded.phase = 'pause';
       loaded.message = 'Your saved run is paused. Resume when you are ready.';
     }
     return loaded;
-  } catch { return createGame(today); }
+  } catch { return demo() ? sampleGame() : createGame(today); }
 }
 
 function loadHistory(): HistoryItem[] {
@@ -76,8 +109,12 @@ function loadHistory(): HistoryItem[] {
 let settings = loadSettings();
 let game = loadGame();
 let runHistory = loadHistory();
-let leaderboard: LeaderboardItem[] = [];
-let leaderboardMessage = 'Load today’s verified scores when you are online.';
+const sampleLeaderboard = (): LeaderboardItem[] => [
+  { rank: 1, nickname: 'PineFox', score: 1390, result: 'escaped', tool: 'Hook', durationSeconds: 354, replay: 'Sample verified replay', verified: true },
+  { rank: 2, nickname: 'SunMoth', score: 1325, result: 'escaped', tool: 'Decoy', durationSeconds: 382, replay: 'Sample verified replay', verified: true },
+];
+let leaderboard: LeaderboardItem[] = demo() ? sampleLeaderboard() : [];
+let leaderboardMessage = demo() ? 'Two sample results are shown. They are bundled with the demo.' : 'Load today’s verified scores when you are online.';
 let leaderboardBusy = false;
 let discardingDemo = false;
 
@@ -125,6 +162,7 @@ function resume() {
   saveGame(); renderGame('[role="grid"]');
 }
 function restart() {
+  if (demo()) { resetDemo(); return; }
   localStorage.removeItem(runKey()); game = createGame(today); leaderboard = [];
   leaderboardMessage = 'Load today’s verified scores when you are online.';
   renderGame('[data-tool]');
@@ -157,8 +195,8 @@ function parseReplay(value: string) {
 function compareResult() {
   const input = document.querySelector<HTMLInputElement>('#comparison-input'); const output = document.querySelector<HTMLElement>('#comparison-result'); if (!output) return;
   const parsed = parseReplay(input?.value.replace(/^Replay data:\s*/i, '') || '');
-  if (!parsed) { output.textContent = 'That result is not in Dawn Run replay format. Copy a complete result and try again.'; return; }
-  output.textContent = `${parsed.seed === seed ? 'Same daily route.' : 'Different daily route.'} Their ${parsed.tool} run ${parsed.result} with ${parsed.score} points in ${parsed.time} seconds. Replay: ${parsed.replay}.`;
+  if (!parsed) { output.textContent = 'That text is not a complete Dawn Run result. Copy the whole result and try again.'; return; }
+  output.textContent = `${parsed.seed === seed ? 'Same daily route.' : 'Different daily route.'} Their ${parsed.tool} run ${parsed.result} with ${parsed.score} points in ${parsed.time} seconds. Move record: ${parsed.replay}.`;
 }
 
 function submissionPayload() {
@@ -175,7 +213,7 @@ async function publishScore() {
   const nickname = cleanNickname(input?.value || settings.nickname);
   if (nickname.length < 2) { leaderboardMessage = 'Enter a nickname with 2–16 letters or numbers.'; renderGame('#nickname'); return; }
   settings.nickname = nickname; saveSettings(); leaderboardBusy = true;
-  leaderboardMessage = demo() ? 'Checking the sample replay…' : 'Verifying and publishing your replay…'; renderGame('[data-action="publish"]');
+  leaderboardMessage = demo() ? 'Checking the sample move record…' : 'Checking and publishing your score…'; renderGame('[data-action="publish"]');
   try {
     const response = await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submissionPayload()) });
     const body = await response.json() as { message?: string; entries?: LeaderboardItem[] };
@@ -234,26 +272,29 @@ function formatDuration(seconds: number) { return `${String(Math.floor(seconds /
 function durationSeconds() { return game.startedAt && game.finishedAt ? Math.max(0, Math.round((game.finishedAt - game.startedAt) / 1000)) : 0; }
 
 function leaderboardView() {
-  const rows = leaderboard.map((item, index) => `<tr><td>${item.rank || index + 1}</td><td>${escapeHtml(item.nickname)}</td><td>${item.score}</td><td>${escapeHtml(item.tool)}</td><td>${formatDuration(item.durationSeconds)}</td><td><details class="table-replay"><summary>View replay</summary><code>${escapeHtml(item.replay)}</code></details></td></tr>`).join('');
-  return `<section class="leaderboard" aria-labelledby="leaderboard-heading"><h3 id="leaderboard-heading">Today’s verified scores</h3><p>Publish sends your nickname, date, tool, score, time, and replay to Dawn Run. Published entries expire after seven days.</p><label for="nickname">Public nickname</label><input id="nickname" maxlength="16" autocomplete="nickname" value="${escapeHtml(settings.nickname)}"><div class="actions"><button class="primary" data-action="publish" ${leaderboardBusy ? 'disabled' : ''}>${demo() ? 'Check sample submission' : 'Publish verified score'}</button><button class="secondary" data-action="load-scores" ${leaderboardBusy ? 'disabled' : ''}>Load today’s scores</button></div><p id="leaderboard-status" class="status" aria-live="polite">${escapeHtml(leaderboardMessage)}</p>${rows ? `<div class="table-scroll"><table><caption>Verified replays for ${today}</caption><thead><tr><th>Rank</th><th>Nickname</th><th>Score</th><th>Tool</th><th>Time</th><th>Replay</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}${demo() ? '<p class="small">Demo submissions are verified against sample standings but are never published.</p>' : ''}</section>`;
+  const rows = leaderboard.map((item, index) => `<tr><td>${item.rank || index + 1}</td><td>${escapeHtml(item.nickname)}</td><td>${item.score}</td><td>${escapeHtml(item.tool)}</td><td>${formatDuration(item.durationSeconds)}</td><td><details class="table-replay"><summary>View move record</summary><code>${escapeHtml(item.replay)}</code></details></td></tr>`).join('');
+  return `<section class="leaderboard" aria-labelledby="leaderboard-heading"><h3 id="leaderboard-heading">Today’s verified scores</h3><p>Publish sends your nickname, date, tool, score, time, and move record to Dawn Run. Published entries expire after seven days.</p><label for="nickname">Public nickname</label><input id="nickname" maxlength="16" autocomplete="nickname" value="${escapeHtml(settings.nickname)}"><div class="actions"><button class="primary" data-action="publish" ${leaderboardBusy ? 'disabled' : ''}>${demo() ? 'Check sample submission' : 'Publish verified score'}</button><button class="secondary" data-action="load-scores" ${leaderboardBusy ? 'disabled' : ''}>Load today’s scores</button></div><p id="leaderboard-status" class="status" aria-live="polite">${escapeHtml(leaderboardMessage)}</p>${rows ? `<div class="table-scroll"><table><caption>Verified move records for ${today}</caption><thead><tr><th>Rank</th><th>Nickname</th><th>Score</th><th>Tool</th><th>Time</th><th>Move record</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}${demo() ? '<p class="small">Demo submissions are checked against sample standings but are never published.</p>' : ''}</section>`;
 }
 
 function endView() {
   const heading = game.finished === 'escaped' ? 'You escaped the sixth room.' : game.finished === 'cashed out' ? 'You cashed out after five rooms.' : 'The watcher ended this run.';
   const seconds = durationSeconds();
-  return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2 id="result-heading" tabindex="-1">${heading}</h2><dl class="score"><div><dt>Score</dt><dd>${scoreGame(game)}</dd></div><div><dt>Health</dt><dd>${game.health}/${MAX_HEALTH}</dd></div><div><dt>Route</dt><dd>${game.log.length} turns</dd></div><div><dt>Time</dt><dd id="run-duration" data-seconds="${seconds}">${formatDuration(seconds)}</dd></div></dl><p class="replay" id="replay-data"><b>Replay data:</b> ${escapeHtml(replayText(game, seed))}</p><p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="copy">Copy result</button><button class="secondary" data-action="share">Share result</button></div>${leaderboardView()}<section class="comparison" aria-labelledby="comparison-heading"><h3 id="comparison-heading">Compare a copied result</h3><label for="comparison-input">Paste a Dawn Run result</label><div class="comparison-row"><input id="comparison-input" autocomplete="off"><button class="secondary" data-action="compare">Compare result</button></div><p id="comparison-result" aria-live="polite">Compare the daily seed, tool, score, time, and replay with another player.</p></section><button class="primary" data-action="restart">Start a fresh practice run</button></section>`;
+  return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2 id="result-heading" tabindex="-1">${heading}</h2><dl class="score"><div><dt>Score</dt><dd>${scoreGame(game)}</dd></div><div><dt>Health</dt><dd>${game.health}/${MAX_HEALTH}</dd></div><div><dt>Route</dt><dd>${game.log.length} turns</dd></div><div><dt>Time</dt><dd id="run-duration" data-seconds="${seconds}">${formatDuration(seconds)}</dd></div></dl><p class="replay" id="replay-data"><b>Move record:</b> ${escapeHtml(replayText(game, seed))}</p><p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="copy">Copy result</button><button class="secondary" data-action="share">Share result</button></div>${leaderboardView()}<section class="comparison" aria-labelledby="comparison-heading"><h3 id="comparison-heading">Compare a copied result</h3><label for="comparison-input">Paste a Dawn Run result</label><div class="comparison-row"><input id="comparison-input" autocomplete="off"><button class="secondary" data-action="compare">Compare result</button></div><p id="comparison-result" aria-live="polite">Compare the map code, tool, score, time, and move record with another player.</p></section><button class="primary" data-action="restart">${demo() ? 'Restart this sample run' : 'Start a fresh practice run'}</button></section>`;
 }
 
 function gameView() {
   if (game.phase === 'choose') {
-    const offered = toolOffers(playerId(), today);
-    return `<section class="game-panel choose"><div class="run-meta"><span>DAILY SEED <b>${seed}</b></span><span>6 ROOMS · 18 BEACONS</span></div><h2>Choose one tool</h2><p>Your three-tool offer is set by this browser. Another player can receive a different set on the same map.</p><div class="tool-grid">${offered.map(toolCard).join('')}</div><p class="small">Offer code ${hashString(playerId()).toString(36).slice(0, 5).toUpperCase()} · The map stays shared.</p></section>`;
+    const offered = toolOffers(localStorage.getItem(playerKey()) || previewPlayer(), today);
+    return `<section class="game-panel choose"><div class="run-meta"><span>Today’s map code: <b>${seed}</b></span><span>6 ROOMS · 18 BEACONS</span></div><h2>Choose one tool</h2><p>Your three-tool offer is set by this browser. Another player can receive a different set on the same map.</p><div class="tool-grid">${offered.map(toolCard).join('')}</div><p class="small">The map stays shared.</p></section>`;
   }
   if (game.phase === 'cashout') return `<section class="game-panel result"><p class="eyebrow">ROOM FIVE COMPLETE</p><h2>Cash out or take the final chase?</h2><p>Your current score is <strong>${scoreGame(game)}</strong>. The last watcher moves faster when a beacon lights.</p><div class="actions"><button class="primary" data-action="final">Run the final chase</button><button class="secondary" data-action="cash">Cash out with ${scoreGame(game)}</button></div></section>`;
   if (game.phase === 'end') return endView();
   if (game.phase === 'pause') return `<section class="game-panel result"><p class="eyebrow">RUN PAUSED</p><h2>Resume your run</h2><p>Your room, score, tool, and lit beacons are saved in this browser.</p><button class="primary" data-action="resume">Resume run</button><p class="small">Press Escape or tap Resume run.</p></section>`;
   const directions = [['↑', 0, -1, 'Up'], ['←', -1, 0, 'Left'], ['↓', 0, 1, 'Down'], ['→', 1, 0, 'Right']] as const;
-  return `<section class="game-panel play"><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(MAX_HEALTH - game.health)}</b></span><span>BEACONS <b>${roomBeaconCount()}/${REQUIRED_BEACONS}</b></span><span>SCORE <b>${scoreGame(game)}</b></span></div>${board()}<p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="tool" ${game.roomUsed ? 'disabled aria-disabled="true"' : ''}>Use ${game.tool}${game.roomUsed ? ' (used)' : ''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${directions.map(([symbol, x, y, name]) => `<button aria-label="Move ${name}" data-move="${x},${y}">${symbol}</button>`).join('')}</div><p class="small input-note">Light all three beacons. Then reach the flag. Arrow keys or these controls move.</p></section>`;
+  const moveNames: Record<string, string> = { R: 'right', D: 'down', L: 'left', U: 'up' };
+  const recentMoves = game.log.slice(-5).map(action => moveNames[action] || action.toLowerCase()).join(', ');
+  const sampleProgress = demo() ? `<section class="sample-progress" aria-labelledby="sample-progress-heading"><h3 id="sample-progress-heading">Sample run in progress</h3><p><b>Recent moves:</b> ${recentMoves}. One beacon is already lit.</p><h3>Sample standings</h3><ol>${sampleLeaderboard().map(item => `<li><span>${item.nickname} · ${item.tool}</span><b>${item.score}</b></li>`).join('')}</ol><button class="secondary" data-action="reset-demo">Restart this sample run</button></section>` : '';
+  return `<section class="game-panel play"><div class="run-meta"><span>Today’s map code: <b>${seed}</b></span><span>6 ROOMS · 18 BEACONS</span></div><h2 class="game-heading">Room ${game.room} in progress</h2><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(MAX_HEALTH - game.health)}</b></span><span>BEACONS <b>${roomBeaconCount()}/${REQUIRED_BEACONS}</b></span><span>SCORE <b>${scoreGame(game)}</b></span></div>${board()}<p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="tool" ${game.roomUsed ? 'disabled aria-disabled="true"' : ''}>Use ${game.tool}${game.roomUsed ? ' (used)' : ''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${directions.map(([symbol, x, y, name]) => `<button aria-label="Move ${name}" data-move="${x},${y}">${symbol}</button>`).join('')}</div><p class="small input-note">Light all three beacons. Then reach the flag. Arrow keys or these controls move.</p>${sampleProgress}</section>`;
 }
 
 function progressView() {
@@ -263,19 +304,20 @@ function progressView() {
 }
 
 function shell(content: string) {
-  return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo() ? `<aside class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></aside>` : ''}<main id="main" tabindex="-1">${content}</main><footer><span>A six-room tactical route for one player.</span><span class="footer-links"><a href="/privacy" data-nav>Privacy</a><a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v2.0</span><small>Illustration texture is original generated imagery.</small></footer><div class="route-live" aria-live="polite"></div>`;
+  return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo() ? `<div class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></div>` : ''}<main id="main" tabindex="-1">${content}</main><footer><span>A six-room tactical route for one player.</span><span class="footer-links"><a href="/privacy" data-nav>Privacy</a><a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v2.1</span><small>The background illustration is original generated art.</small></footer><div class="route-live" aria-live="polite"></div>`;
 }
 
 function landing() {
-  return shell(`<section class="hero"><div class="hero-copy"><p class="eyebrow">A DAILY BROWSER GAME</p><h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a 5–7 minute tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Loads a sample run. Nothing is saved.</span></div><ul class="facts"><li>Free to play</li><li>18 beacons on one shared map</li><li>Works offline after the first visit</li><li>Scores publish only when you choose</li></ul></div><div class="hero-game"><div class="hero-art" aria-label="A printed sunrise route map with the daily game">${gameView()}</div>${progressView()}</div></section><section id="how" class="how" tabindex="-1"><h2>How the daily run works</h2><ol><li><b>Pick one offered tool.</b> Each browser gets three from five tools.</li><li><b>Light 18 beacons.</b> Plan around rocks, brambles, and the watcher.</li><li><b>Publish a verified result.</b> Submit a nickname and replay after the run.</li></ol></section><section class="plain"><h2>What Dawn Run sends</h2><p>Runs and settings stay in this browser. Publishing sends only the listed result fields after you choose it.</p></section>`);
+  const demoIntro = demo() ? `<p class="demo-kicker">READY TO PLAY</p><h1 tabindex="-1">Continue a sample run</h1><p class="lede">Room two is underway with Hook selected, one beacon lit, and two sample scores ready to compare.</p>` : `<h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a 5–7 minute tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Opens a sample game already in progress. Sample play stays separate from your runs.</span></div><ul class="facts"><li>Free to play</li><li>18 beacons on one shared map</li><li>Works offline after the first visit</li><li>Scores publish only when you choose</li></ul>`;
+  return shell(`<section class="hero${demo() ? ' demo-hero' : ''}"><div class="hero-copy">${demoIntro}</div><div class="hero-game"><div class="hero-art" aria-label="A printed sunrise route map with the daily game">${gameView()}</div>${progressView()}</div></section><section id="how" class="how" tabindex="-1"><h2>How the daily run works</h2><ol><li><b>Pick one offered tool.</b> Each browser gets three from five tools.</li><li><b>Light 18 beacons.</b> Avoid rocks and brambles while the watcher follows you.</li><li><b>Publish a verified result.</b> Submit a nickname and a record of your moves after the run.</li></ol></section><section class="plain"><h2>What Dawn Run sends</h2><p>Your current run, settings, and eight recent results stay in this browser. Dawn Run sends a score only after you choose Publish verified score.</p></section>`);
 }
 
 function privacy() {
-  return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores your current run, settings, player code, and eight recent results in this browser.</p><p>Nothing is published until you choose Publish verified score. Publication sends your nickname, date, tool, score, time, and replay to Dawn Run.</p><p>Published entries are pseudonymous and expire after seven days. Dawn Run does not use analytics, advertising, accounts, or third-party scripts.</p><p>The demo uses separate keys that start with <code>demo:</code>. Reset demo and Start for real remove those keys. Demo submissions are not stored.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
+  return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores your current run, settings, player code, and eight recent results in this browser.</p><p>Nothing is published until you choose Publish verified score. Publication sends your nickname, date, tool, score, time, and move record to Dawn Run.</p><p>Published entries use your chosen nickname and expire after seven days. Dawn Run does not use analytics, advertising, accounts, or third-party scripts.</p><p>The demo uses separate keys that start with <code>demo:</code>. Reset demo and Start for real remove those keys. Demo submissions are not stored.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
 }
 
 function terms() {
-  return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game for personal play.</p><p>Published scores are replay-verified, pseudonymous, and kept for seven days. Invalid or abusive submissions may be rejected.</p><p>The game and score service are provided as-is.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
+  return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game for personal play.</p><p>Dawn Run checks each published score against its move record. Published scores expire after seven days.</p><p>Changed or abusive submissions may be rejected. The game and score service are provided as-is.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
 }
 
 function setMeta(path: string) {
@@ -283,13 +325,17 @@ function setMeta(path: string) {
   const description = path === '/privacy' ? 'How Dawn Run stores and publishes game data.' : path === '/terms' ? 'Terms for the Dawn Run browser game.' : demo() ? 'Try an isolated sample Dawn Run.' : 'Play a 5–7 minute tactical route and publish a verified daily score.';
   document.title = title;
   document.querySelector('meta[name="description"]')?.setAttribute('content', description);
-  document.querySelector('link[rel="canonical"]')?.setAttribute('href', `https://dawn-run.sociobot.in${path}`);
+  const canonicalPath = demo() ? '/demo' : path;
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', `https://dawn-run.sociobot.in${canonicalPath}`);
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', title);
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', description);
+  document.querySelector('meta[name="twitter:title"]')?.setAttribute('content', title);
+  document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', description);
 }
 
 function render(options: { routeFocus?: boolean; focus?: string } = {}) {
   const path = location.pathname; setMeta(path); document.documentElement.classList.toggle('reduced-effects', settings.reducedEffects);
+  document.body.classList.toggle('is-demo', demo());
   app.innerHTML = path === '/privacy' ? privacy() : path === '/terms' ? terms() : landing();
   document.querySelector<HTMLElement>('.route-live')!.textContent = document.title;
   requestAnimationFrame(() => {
@@ -347,7 +393,10 @@ window.addEventListener('keydown', event => {
   const keys: Record<string, string> = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R' };
   if (keys[event.key] && game.phase === 'play') { event.preventDefault(); runAction(keys[event.key], focusSelector(document.activeElement)); }
 });
-document.addEventListener('visibilitychange', () => { if (!discardingDemo && document.hidden && game.phase === 'play') pause(); });
+document.addEventListener('visibilitychange', () => {
+  const hasPersistedRun = Boolean(localStorage.getItem(runKey()));
+  if (!discardingDemo && document.hidden && game.phase === 'play' && (!demo() || hasPersistedRun)) pause();
+});
 
 let last = performance.now(); let accumulator = 0;
 function loop(now: number) { accumulator += Math.min(250, now - last); last = now; while (accumulator >= 1000 / 60) accumulator -= 1000 / 60; requestAnimationFrame(loop); }

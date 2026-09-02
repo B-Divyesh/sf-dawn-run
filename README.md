@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open the Vite URL. The local server includes an in-memory score API for end-to-end development. Open `/demo` for the isolated sample run.
+Open the Vite URL. The local server includes a score API for development. Open `/demo` for an isolated run already in progress.
 
 ## Test and build
 
@@ -22,17 +22,17 @@ npm test -- --reporter=line
 npm run build
 ```
 
-The tests play deterministic win, loss, and cash-out routes through their real screens. They also cover replay verification, score publication, active-state axe checks, keyboard focus, touch resume, persistent settings/history, privacy, offline reload, and frame rate.
+The tests play deterministic win, loss, and cash-out routes through their real screens. They cover every claim listed in `.factory/claims.json`.
 
 The production build writes the static client to `dist/`.
 
 ## Scores and privacy
 
-Runs, settings, a random player code, and eight recent results stay in browser storage. Nothing is published until the player chooses **Publish verified score**.
+The current run, settings, random player code, best score, and eight recent results stay in browser storage. Nothing is published until the player chooses **Publish verified score**.
 
-Publication sends a nickname, UTC date, tool, score, duration, and deterministic replay to the product’s same-origin API. The API rebuilds the run from its actions, rejects altered results, and retains the published row for seven days. Demo submissions are verified against sample standings but never stored.
+Publication sends a nickname, date, tool, score, time, and move record to Dawn Run. The API rebuilds the run, rejects altered scores, and removes published results after seven days. Demo submissions are checked against sample standings but never stored.
 
-Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores seven-day scores in a SQLite snapshot at `/data/dawn-run-scores-v3.sqlite`. No account, third-party script, analytics service, or payment service is used. Play and local history keep working offline after the first controlled visit; the leaderboard requires a connection.
+Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores scores in a SQLite snapshot at `/data/dawn-run-scores-v3.sqlite`. No account, third-party script, analytics service, or payment service is used. The game opens offline after the first visit.
 
 ## Deploy
 

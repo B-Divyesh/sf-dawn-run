@@ -58,10 +58,14 @@ test('score service verifies and publishes a deterministic completed replay', as
   assert.equal(listed.body.entries[0].nickname, 'Verifier'); assert.equal(listed.body.entries[0].rank, 1);
 });
 
-test('score service rejects tampering and never stores demo submissions', async () => {
+test('@claim:replay-tamper score service rejects an altered score', async () => {
   const repository = memoryRepository(); const tampered = completedPayload(); tampered.score++;
   const rejected = await submitScore(repository, tampered, new Date('2026-09-02T12:00:00Z')); assert.equal(rejected.status, 422); assert.equal(repository.items.length, 0);
-  const demo = await submitScore(repository, { ...completedPayload(), demo: true }, new Date('2026-09-02T12:00:00Z')); assert.equal(demo.status, 200); assert.equal(demo.body.published, false); assert.equal(repository.items.length, 0);
+});
+
+test('@claim:demo-submission score service verifies but never stores demo submissions', async () => {
+  const repository = memoryRepository(); const demo = await submitScore(repository, { ...completedPayload(), demo: true }, new Date('2026-09-02T12:00:00Z'));
+  assert.equal(demo.status, 200); assert.equal(demo.body.published, false); assert.equal(repository.items.length, 0);
 });
 
 test('score service enforces pseudonym and seven-day retention policy', async () => {
@@ -102,4 +106,10 @@ test('SQLite snapshot under the data mount restores after a process restart', as
   assert.equal((await restored.list(date))[0].nickname, 'Verifier');
   restored.close();
   rmSync(directory, { recursive: true, force: true });
+});
+
+test('@claim:score-retention SQLite removes a published row after seven days', async () => {
+  const repository = createRepository(':memory:');
+  await repository.upsertBest({ id: 'expired', date, nickname: 'OldWalker', score: 100, result: 'escaped', tool: 'Hook', durationSeconds: 400, replay: 'expired replay', actions: 'R', createdAt: '2026-08-25T00:00:00.000Z', expiresAt: '2026-09-01T00:00:00.000Z' });
+  assert.deepEqual(await repository.list(date), []); repository.close();
 });

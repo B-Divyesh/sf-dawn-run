@@ -1,4 +1,4 @@
-const CACHE = 'dawn-run-20260902-repair-5';
+const CACHE = 'dawn-run-20260902-polish-1';
 const APP_SHELL = '/index.html';
 const APP_ROUTES = ['/', '/demo', '/privacy', '/terms'];
 const STATIC_SHELL = ['/favicon.svg', '/apple-touch-icon.svg'];

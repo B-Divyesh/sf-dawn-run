@@ -26,6 +26,8 @@ The interface uses locally shipped system font stacks: Georgia for large editori
 
 Tools are large stamped buttons. Room choices are visible routes, not hidden dice rolls. Focus remains on the board or the control used when game state updates. Health, beacons, and score update immediately. Reduced motion and the persistent Reduce visual effects setting remove transitions. Screen shake and sound are omitted.
 
+The demo uses the same field-guide board, not a separate marketing mockup. It opens midway through room two and pairs the live board with a compact move note and two printed-score rows. On phones, the short demo heading yields to the board within the first viewport; no game control is reduced below 44 px.
+
 ## Art plan and provenance
 
 The hero is an original generated ink-and-halftone sunrise map illustration, used as a low-key section texture only; all playable board art is procedural HTML/CSS so it stays sharp and readable. Generated art has no text, logos, or brands. `assets/src/dawn-field.png` is the source image and `public/assets/dawn-field.webp` is the 131 KB production asset. It was generated on 2026-09-01 with the factory-image deployment from this prompt: “A dithered halftone risograph field map at dawn, abstract six-room route through pine hills, warm paper ground, dark ink, pine green, burnt orange and ochre print inks, empty area for interface, screenprint grain, no words, no logos, no watermark.” The sidecar JSON records the exact source. The footer discloses the generated illustration.
