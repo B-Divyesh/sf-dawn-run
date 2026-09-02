@@ -81,7 +81,7 @@ export async function submitScore(repository, body, now = new Date()) {
     ttl: RETENTION_SECONDS,
   };
   if (body.demo === true) {
-    return { status: 200, body: { message: 'Sample move record checked. Demo data was not published.', published: false, entry: publicEntry(item, 1), entries: ranked([item, ...sampleEntries(body.date)]) } };
+    return { status: 200, body: { message: 'Sample replay verified. Demo data was not published.', published: false, entry: publicEntry(item, 1), entries: ranked([item, ...sampleEntries(body.date)]) } };
   }
   const saved = await repository.upsertBest(item);
   const entries = await repository.list(body.date);
