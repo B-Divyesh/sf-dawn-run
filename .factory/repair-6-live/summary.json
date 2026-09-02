@@ -1,0 +1,41 @@
+{
+  "candidate": "29d4c5a5327413c83f9471ac449ae2c12044bf81",
+  "deploymentId": "5696706e-e628-4036-af91-d0b9b30c98f4",
+  "claims": {
+    "total": 29,
+    "passed": 29,
+    "failed": 0,
+    "retries": 0,
+    "settingsHistorySeconds": 10,
+    "frameRateSeconds": 12
+  },
+  "frameRate": {
+    "viewport": "390x844",
+    "samplesFps": [60, 60.01, 60.01, 59.99, 60],
+    "medianFps": 60,
+    "floorFps": 55
+  },
+  "lighthouse": {
+    "performance": 100,
+    "accessibility": 100,
+    "bestPractices": 100,
+    "seo": 100,
+    "lcpMs": 1657.527,
+    "cls": 0,
+    "totalBlockingTimeMs": 29,
+    "transferBytes": 150036,
+    "runtimeError": null
+  },
+  "live": {
+    "url": "https://dawn-run.sociobot.in/demo",
+    "status": 200,
+    "verifyLoadMs": 723,
+    "axeViolations": 0,
+    "consoleErrors": 0,
+    "offlineReload": true,
+    "unknownRouteStatus": 404,
+    "reducedMotionElements": 0,
+    "mobileScrollWidth": 390,
+    "mobileClientWidth": 390
+  }
+}

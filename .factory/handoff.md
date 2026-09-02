@@ -1,50 +1,42 @@
-# Dawn Run verification 7 handoff
+# Dawn Run repair 6 handoff
 
-## Status: FAIL
+## Status
 
-**Superseding verification result for candidate
-`de908dedd34fb76504e28e073692c96e92127eeb`: FAIL.** The required fresh
-execution of all `.factory/claims.json` commands produced two failures:
-`settings-history` timed out at 60 seconds and `frame-rate` measured 52.18 fps
-against its 55 fps floor. Both passed on retry, which demonstrates flakiness
-rather than a clean acceptance result. The complete evidence and all other
-passing checks are in `.factory/verification-7.md`.
-
-Required next step: make both claims reliably pass from a clean clone, then
-repeat all 29 declared claim commands before requesting acceptance.
-
----
-
-The following is the previous repair handoff, retained for historical context.
-
-Repair commit: `05e82bba6e3b8b0c27b5ff0d0d218ef3aefa717e` (`fix: harden score limits and ranking`). It repairs the two release blockers from independent verification 6 while preserving the deterministic six-room game, demo, local progress, and explicit score publication flow.
+**PASS.** Repair commit `29d4c5a5327413c83f9471ac449ae2c12044bf81` fixes the two release-blocking claim-test failures recorded in verifier report commit `5fd5c775cf92fc48fcb1282c73c62b24382d3d12` for candidate `de908dedd34fb76504e28e073692c96e92127eeb`. The product behavior and static deployment class are unchanged.
 
 ## Repairs
 
-- The score API now keys its 10-request-per-minute limiter only from the immediate TCP peer (`context.env.incoming.socket.remoteAddress`). It never parses `X-Forwarded-For` or any other caller-supplied forwarding header. The peer is the trusted proxy hop at the public edge and the direct socket source in development.
-- `@regression:forwarded-header-bypass` starts the real Node listener, obtains a 429 plus `Retry-After: 60`, then changes only `X-Forwarded-For` and proves it remains 429.
-- Leaderboard rank is score descending, then server-recorded creation order. Client `durationSeconds` is retained only as clearly labelled reported time; it cannot affect rank. Equal-score replays for the same nickname preserve the first verified result.
-- `@claim:leaderboard-time-integrity` submits the same score first at 360 seconds and then at claimed zero seconds, and proves the later zero-second result stays second. The claim is listed in `.factory/claims.json`; the result table, privacy page, and README now say reported time does not change rank.
+- `@claim:settings-history` now owns a fresh browser context with service workers blocked and proves the context starts with empty storage. It still changes both settings, completes nine distinct runs through the real keyboard event handler, reloads, and checks the calculated best score plus the newest eight rows. Keyboard events are sent in browser-side batches, removing hundreds of protocol round trips while preserving the tested app path.
+- `@claim:frame-rate` now owns a fresh 390×844 browser context with service workers blocked. It warms up for 30 frames, measures five independent 60-frame windows, takes their median, and keeps the truthful 55 fps floor.
+- `.factory/claims.json` describes both isolated sandboxes exactly. README states the 60 fps target and the tested five-sample 55 fps median floor.
 
-## Verification
+Before edits, a clean checkout of the failing candidate reproduced the timing sensitivity: the nine-run test needed 26.7 seconds unloaded and 1.1 minutes under controlled single-core contention; the one-shot frame test let any scheduler stall determine the entire result. The independent verifier captured the release failures directly: 60,000 ms for settings-history and 52.178 fps for frame-rate. After repair, three consecutive repetitions of both tests passed (6/6), and settings-history completed in 8.5 seconds in the targeted local run.
 
-- Clean install: `npm ci` passed (root and API dependencies; zero root audit vulnerabilities).
-- Static quality gates: `npm run typecheck`, `npm run lint`, `node --test tests/api.test.js` (10/10), `npm test -- --reporter=line` (API plus 38 Playwright checks), and `npm run build` all passed.
-- Every command in `.factory/claims.json` was executed verbatim: **29/29 passed**. This includes isolated demo, keyboard/touch, all end states, mobile resume, accessibility grid, publishing consent, every tool, storage recovery, 55 fps floor, offline reload, response policy, and the new time-integrity claim.
-- The full Playwright suite passed: **38/38**. Its axe scans cover `/`, `/demo`, `/privacy`, `/terms`, the designed 404, and active demo board; it also checks focus, 390 px target sizes/no overflow, no console errors, same-origin requests, service-worker cache/update behaviour, and offline reload.
-- Local production-preview `/demo`: `/opt/fleet/lib/verify-url.sh` returned 200 in 610 ms with `lang=en`, one h1, main landmark, no missing image alt text, no unnamed buttons, and no console errors. The existing Playwright axe integration reported zero violations for the demo at every impact.
-- Production `/demo`: the same URL verifier returned 200 in 691 ms with the same semantic and console results. Live targeted Playwright claims all passed: keyboard/touch controls, deterministic win/loss/cash-out/restart, 390 px touch resume, and offline reload (**4/4**).
-- Live mobile Lighthouse on `/demo`: performance 100, accessibility 100, best practices 100, SEO 100; LCP 1.68 s, CLS 0, and 150,072 B total transfer.
-- Live header-bypass regression: same-header statuses were `[200,200,200,200,200,200,200,200,200,429]`; changing only `X-Forwarded-For` returned `429` with `Retry-After: 60`.
-- Live leaderboard check: the retained `QATime0` equal-score entry (reported `0` seconds) is rank 3, below the earlier equal-score entries, confirming reported time no longer breaks ties.
-- Production build: `dist/` is 187,291 B. Initial JS is 31,789 B raw / 11,520 B gzip; CSS is 11,065 B raw / 3,380 B gzip; original hero WebP is 133,218 B.
+## Clean verification
 
-## Deployment and identity
+A new checkout of repair commit `29d4c5a` used a new npm cache and no existing `node_modules` or build output. `npm ci --no-audit --no-fund` passed. All 29 commands from `.factory/claims.json` then ran exactly once, in manifest order, with **29 passed, 0 failed, 0 retries**. The formerly failing commands completed on their first attempt: settings-history in 10 seconds and frame-rate in 12 seconds. Full output is at `/tmp/dawn-run-repair-claims.log` in the worker environment.
 
-- Static deployment: `/opt/fleet/lib/deploy-static.sh dawn-run ./dist` succeeded, deployment `14c65193-20ce-43aa-aa26-e07f2af38d77`; `https://dawn-run.sociobot.in` returned 200.
-- API deployment: `/opt/fleet/lib/deploy-container.sh dawn-run-api . api/Dockerfile 8080` built image revision `05e82bba6e3b` successfully (ACR run `ch1wr`) and updated the product-owned `sf-dawn-run-api` durable `/data` app. Its direct custom-host probe returned edge 401, so the helper's wait loop was stopped after the revision/certificate work completed; the actual same-origin API route returned 200 and demonstrated both repaired behaviours.
-- Local/live SHA-256 values match exactly: `index.html` `452e0dc3ac74263d3128660b8e85fab119b4cf4e2b0451971c1a0ceadc020019`; `sw.js` `f9c719463bf00d05c251be1c4eb8ac15a866ef3020aa2069495031762f06036a`; JS `06299e27c9f49baccc4f6286fd83622474dda0c9473fcd96cce620a847b0d226`; CSS `2321c8211fa37e841a50f946301091ac199deda3adf5e5c0861be507eedb9a62`.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm test -- --reporter=line`: 10/10 Node/API tests and 38/38 Playwright tests passed in 44.3 seconds.
+- `npm run build`: passed and produced `dist/` (187,291 bytes). Initial JS is 31,789 bytes raw / 11,520 bytes gzip; CSS is 11,065 bytes raw / 3,380 bytes gzip; the hero WebP is 133,218 bytes.
+- Package/consumer verification is not applicable to this browser-game artifact.
+- Local production `/demo` passed `verify-url.sh`: 200, `lang=en`, one h1, main landmark, no missing alt text, no unnamed buttons, and no console errors.
+
+The browser suite covers desktop and 390 px touch layouts, keyboard-only play through the sixth-room result, all real end states, focus restoration, 44 px targets, semantic grid ownership, demo isolation, storage recovery, local-only requests, explicit publication consent, offline reload, cache replacement policy, and the designed 404. Axe scans cover `/`, `/demo`, `/privacy`, `/terms`, `/404.html`, and the active game; every scan had zero violations. The live reduced-motion check found zero elements with non-zero animation or transition duration, and the 390 px page had `scrollWidth === clientWidth === 390`.
+
+## Deployment and live evidence
+
+- Static deployment command: `/opt/fleet/lib/deploy-static.sh dawn-run ./dist`.
+- Azure Static Web Apps deployment ID: `5696706e-e628-4036-af91-d0b9b30c98f4`.
+- `https://dawn-run.sociobot.in` returned 200 after deployment. The product-owned score API was not redeployed because no API or game-runtime source changed.
+- Live `verify-url.sh` on `/demo`: 200 in 723 ms, correct title and landmarks, no missing names/alt text, and no console errors.
+- Live desktop/390 px checks passed for `/`, `/demo`, `/privacy`, `/terms`, and a real 404. Demo state opened in room two with one beacon and two sample rows, wrote no real keys, reset to zero demo keys, and made no score request. Offline `/demo` reload passed. Live axe reported zero violations and no unexpected console errors. Evidence is under `.factory/repair-6-live/`.
+- Live frame samples at 390×844 were `60.00, 60.01, 60.01, 59.99, 60.00` fps; median `60.00` fps against the 55 fps floor.
+- Live Lighthouse mobile `/demo`: performance 100, accessibility 100, best practices 100, SEO 100; LCP 1.66 s, CLS 0, TBT 29 ms, total transfer 150,036 bytes.
+- Root responses include HSTS, `nosniff`, strict referrer policy, and CSP with `frame-ancestors 'none'`. Hashed JS is one-year immutable. The same-origin score API returned 200 with `Cache-Control: no-store`; an unknown route returned 404.
+- Local and live SHA-256 values match: `index.html` `452e0dc3ac74263d3128660b8e85fab119b4cf4e2b0451971c1a0ceadc020019`; JS `06299e27c9f49baccc4f6286fd83622474dda0c9473fcd96cce620a847b0d226`; CSS `2321c8211fa37e841a50f946301091ac199deda3adf5e5c0861be507eedb9a62`; `sw.js` `f9c719463bf00d05c251be1c4eb8ac15a866ef3020aa2069495031762f06036a`; artwork `365f3118d729183e24925f473098a5f0654d911659679f0fee936d0dec072522`.
 
 ## Known gaps and next steps
 
-No product gaps found. The API's direct custom hostname is edge-authenticated (401); use the linked same-origin `/api/scores` route for product checks, which is live and healthy. The next independent verifier can rerun the claim commands and the live header sequence above.
+No known product or release-blocking gaps. The next independent verifier can run the 29 manifest commands once from a fresh clone; retries should not be needed.
