@@ -24,6 +24,8 @@ npm run build
 
 The tests play deterministic win, loss, and cash-out routes through their real screens. They cover every claim listed in `.factory/claims.json`.
 
+The fixed simulation heartbeat targets 60 fps. Its mobile browser check requires a median of at least 55 fps across five samples.
+
 The production build writes the static client to `dist/`.
 
 ## Scores and privacy
