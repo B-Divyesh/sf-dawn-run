@@ -1,0 +1,48 @@
+{
+  "candidate": "d24ff88f8a309e6d8055f8f230d769ddb3a9143b",
+  "url": "https://dawn-run.sociobot.in",
+  "claims": { "passed": 28, "total": 28 },
+  "suite": { "apiPassed": 8, "playwrightPassed": 38 },
+  "liveRun": {
+    "tool": "Hook",
+    "actions": 145,
+    "result": "escaped",
+    "score": 1430,
+    "health": 2,
+    "fps": 60,
+    "scoreRequestsBeforePublish": 0,
+    "requestOrigins": ["https://dawn-run.sociobot.in"]
+  },
+  "rateLimit": {
+    "allowance": 10,
+    "windowSeconds": 60,
+    "request11Status": 429,
+    "request11RetryAfter": "60",
+    "spoofedForwardedForStatusWithoutWaiting": 200
+  },
+  "durationIntegrity": {
+    "honestDurationSeconds": 360,
+    "honestRank": 2,
+    "alteredDurationSeconds": 0,
+    "alteredRank": 1,
+    "sameVerifiedScore": 1430
+  },
+  "lighthouseMobile": {
+    "performance": 100,
+    "accessibility": 100,
+    "bestPractices": 100,
+    "seo": 100,
+    "fcpMs": 930,
+    "lcpMs": 1680,
+    "tbtMs": 0,
+    "cls": 0,
+    "transferBytes": 149948
+  },
+  "hashes": {
+    "index.html": "150538afbfc1223d18fa4eae6ebf282aff72e0b78d8501b4d9de542a8b5388f8",
+    "index-B2cfioxo.js": "06b310bbd281c7ac2d1df01a68ab5ee7abeedd072c8c282db4e8cfa990cf4263",
+    "index-CoyGrBaE.css": "2321c8211fa37e841a50f946301091ac199deda3adf5e5c0861be507eedb9a62",
+    "sw.js": "f9c719463bf00d05c251be1c4eb8ac15a866ef3020aa2069495031762f06036a",
+    "dawn-field.webp": "365f3118d729183e24925f473098a5f0654d911659679f0fee936d0dec072522"
+  }
+}

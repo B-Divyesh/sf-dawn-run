@@ -1,21 +1,31 @@
-# Dawn Run polish 1 handoff
+# Dawn Run verification 6 handoff
 
-## Status
+## Status: FAIL
 
-Polish round 1 resolves every finding in `.factory/review-1.md`. The production artifact remains a Vite + TypeScript browser game with its existing same-origin score service.
+Candidate `d24ff88f8a309e6d8055f8f230d769ddb3a9143b` was independently verified on 2026-09-02 UTC against `https://dawn-run.sociobot.in`. The static build and candidate API change are live, and the game, all 28 claims, build gates, accessibility, privacy flow, offline behavior, and performance checks pass. Release is blocked by the public API rate-limit bypass documented in `.factory/verification-6.md`.
 
-## What changed
+## Release-blocking defect
 
-- Demo entry now shows a realistic active room, lit progress, move history, current score, and sample standings without creating storage.
-- Landing preview initialization no longer writes any `dawn:` key. Reset and Start for real delete the entire demo namespace.
-- Added exact claims and tests for publication consent, all five tools, nine-run persistence, altered-score rejection, demo non-retention, and seven-day expiry.
-- Corrected the banner ARIA role, added full-impact axe coverage, and completed the designed 404 shell and metadata.
-- Rewrote first-screen notes, map-code labels, help steps, move-record language, privacy copy, and the ≤120-character catalog description.
-- Added route-title, canonical, Open Graph, Twitter, history-focus, legal-link, 404, mobile-overflow, and touch-target checks.
+The API allows 10 requests per client per 60 seconds and correctly returns 429 plus `Retry-After: 60` on request 11. The same client can immediately restore a 200 response by supplying a different `X-Forwarded-For` value because `api/server.js` trusts the first caller-controlled value. Derive the limiter key from a trusted proxy hop and add a live bypass regression.
 
-## Verification
+## Additional defect
 
-Run from the repository root:
+`durationSeconds` is accepted from the client and used to break leaderboard score ties. The same valid replay was accepted at both 360 seconds and 0 seconds, with the 0-second row ranked first. Remove unverified duration from ranking or make time verifiable.
+
+## Passing evidence
+
+- Every `.factory/claims.json` command: 28/28 passed.
+- `npm ci`, `npm run typecheck`, `npm run lint`, `npm test -- --reporter=line`, and `npm run build`: passed; 8 API tests and 38 Playwright tests.
+- Live first-read/demo gate: passed on desktop and 390 px mobile.
+- Live real run: title to 145-action win, score 1,430, publication, restart, persisted settings/history, 60 fps.
+- Live focused loss, cash-out, restart, and touch-resume checks: 2/2 passed.
+- Live axe: zero violations across `/`, `/demo`, `/privacy`, and `/terms`; console/page errors: zero.
+- Live privacy request log: same-origin only and no score request before explicit publication.
+- Service-worker update and offline `/demo` reload: passed.
+- Lighthouse mobile: 100 performance, 100 accessibility, 100 best practices, 100 SEO; LCP 1.68 s, CLS 0.
+- Local production HTML, JS, CSS, worker, and art are byte-identical to live.
+
+## Reproduce
 
 ```sh
 npm ci
@@ -23,26 +33,9 @@ npm run typecheck
 npm run lint
 npm test -- --reporter=line
 npm run build
+PLAYWRIGHT_BASE_URL=https://dawn-run.sociobot.in npx playwright test tests/game.spec.ts --grep '@claim:(end-screen|resume-touch)' --reporter=line
 ```
 
-Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests passed; `dist/` was produced. The production build contains 31.59 KB JS, 11.07 KB CSS, and a 133.22 KB hero image before compression. Every one of the 28 claim commands passed independently in a clean clone. Local mobile Lighthouse scored 100 performance, 100 accessibility, 100 best practices, and 100 SEO, with 1.8 s LCP, 0 CLS, and 0 ms total blocking time.
+Full evidence, exact hashes, response behavior, and remediation are in `.factory/verification-6.md`. Fresh screenshots and URL-verifier results are under `.factory/verification-artifacts/verify6-*`.
 
-## Deployment and live checks
-
-Deployed the final static build to the existing `sf-dawn-run` Static Web App with fleet deployment `68f0c34b-2b52-42f6-9749-b977677ca00e`. No infrastructure outside the work-order scope was read or changed.
-
-- Live URL: `https://dawn-run.sociobot.in`
-- `/`, `/demo`, `/privacy`, and `/terms`: HTTP 200 with route-specific titles, one h1, metadata, and legal links.
-- `/not-a-real-route-polish-1`: HTTP 404 with the full Dawn Run header, footer, metadata, and recovery links.
-- Cold demo: active room two, one lit beacon, two sample rows, no initial storage, zero `dawn:` keys after play, and zero keys after reset/return to real.
-- Requests: zero `/api/scores` calls before an explicit publish action; no third-party requests in the claim flow.
-- Accessibility: full axe 4.13 scan reported zero violations. The fleet verifier reported zero console errors on `/` and `/demo`.
-- Offline: a fresh service-worker context loaded `/demo` after the network was disabled.
-- Live finding regression: 10 focused Playwright checks passed, covering demo isolation, all five tool rules, nine-run persistence, metadata/history focus, 404, and full axe.
-- Live end-to-end demo check: the bundled move record completed successfully and returned “Sample move record checked. Demo data was not published.”
-
-Evidence is under `.factory/live-polish-1/`, including `cold-check.json`, desktop/mobile screenshots, response HTML, and verifier reports.
-
-## Known gaps
-
-None.
+No product source code or infrastructure was modified.
