@@ -32,7 +32,7 @@ Runs, settings, a random player code, and eight recent results stay in browser s
 
 Publication sends a nickname, UTC date, tool, score, duration, and deterministic replay to the product’s same-origin API. The API rebuilds the run from its actions, rejects altered results, and retains the published row for seven days. Demo submissions are verified against sample standings but never stored.
 
-Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores seven-day scores in SQLite under `/data`. No account, third-party script, analytics service, or payment service is used. Play and local history keep working offline after the first controlled visit; the leaderboard requires a connection.
+Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores seven-day scores in SQLite at `/data/dawn-run-v2.sqlite`. No account, third-party script, analytics service, or payment service is used. Play and local history keep working offline after the first controlled visit; the leaderboard requires a connection.
 
 ## Deploy
 
