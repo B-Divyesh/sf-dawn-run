@@ -43,6 +43,7 @@ npm run build
 Final repair commit `99f3cd1e6400b488d6e2acca0a61222e598e5acb` is pushed to `main` and deployed to `https://dawn-run.sociobot.in` on 2026-09-02 UTC. Static deployment `5aab4739-98cd-4188-8531-6ed733fadbd3` completed successfully.
 
 - Live `verify-url.sh` returned 200 in 654 ms with no console/page errors, `lang=en`, one `h1`, one main landmark, no missing alt attributes, and no unlabeled buttons. The final desktop and 390px mobile screenshots were inspected.
+- Live mobile Lighthouse: performance 98, accessibility 100, best practices 100, SEO 100; FCP 0.9 s, LCP 1.2 s, TBT 170 ms, and CLS 0.
 - Live JavaScript, CSS, and service-worker SHA-256 values match the final build exactly: `34d5f2fd164771a31954e07786e63187e90e8bc2aba9ba59fc7a1c8e228a45e1`, `8bc71f0631344cf7c1b2f76a3763339835a2a9589ccd2e01b70cf85ac3717fdc`, and `ed8271cdf78a3bf306be58a83882e3016146732d66e1f28bf5a7a54523722bf3`.
 - A live keyboard run offered Hook, Dash, and Lantern, reached the real escape end screen in 3,145 ms, and displayed a three-second run timer. The advertised 1–10 second range was visible on the landing page.
 - On a fresh live page the first Tab stop was “Skip to the game.” The full winning-flow request log used only the `dawn-run.sociobot.in` origin.
