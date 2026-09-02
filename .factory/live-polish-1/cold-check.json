@@ -1,0 +1,39 @@
+{
+  "origin": "https://dawn-run.sociobot.in",
+  "routes": {
+    "/": {
+      "status": 200,
+      "title": "Dawn Run — Play a six-room daily run"
+    },
+    "/demo": {
+      "status": 200,
+      "title": "Demo — Dawn Run"
+    },
+    "/privacy": {
+      "status": 200,
+      "title": "Privacy — Dawn Run"
+    },
+    "/terms": {
+      "status": 200,
+      "title": "Terms — Dawn Run"
+    },
+    "/not-a-real-route-polish-1": {
+      "status": 404,
+      "title": "Page not found — Dawn Run",
+      "header": true,
+      "footer": true
+    }
+  },
+  "demo": {
+    "activeRoom": 2,
+    "litBeacons": 1,
+    "sampleRows": 2,
+    "resetLeavesKeys": 0,
+    "realKeysWritten": 0
+  },
+  "scoreRequestsBeforePublish": 0,
+  "offline": true,
+  "axeViolations": [],
+  "consoleErrors": [],
+  "expected404Console": 1
+}

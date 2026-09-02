@@ -29,7 +29,18 @@ Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests pa
 
 ## Deployment and live checks
 
-Pending final production deployment and cold verification.
+Deployed the static build to the existing `sf-dawn-run` Static Web App with fleet deployment `96346595-20fd-4cc3-bb9e-1dd3feaef574`. No infrastructure outside the work-order scope was read or changed.
+
+- Live URL: `https://dawn-run.sociobot.in`
+- `/`, `/demo`, `/privacy`, and `/terms`: HTTP 200 with route-specific titles, one h1, metadata, and legal links.
+- `/not-a-real-route-polish-1`: HTTP 404 with the full Dawn Run header, footer, metadata, and recovery links.
+- Cold demo: active room two, one lit beacon, two sample rows, no initial storage, zero `dawn:` keys after play, and zero keys after reset/return to real.
+- Requests: zero `/api/scores` calls before an explicit publish action; no third-party requests in the claim flow.
+- Accessibility: full axe 4.13 scan reported zero violations. The fleet verifier reported zero console errors on `/` and `/demo`.
+- Offline: a fresh service-worker context loaded `/demo` after the network was disabled.
+- Live finding regression: 10 focused Playwright checks passed, covering demo isolation, all five tool rules, nine-run persistence, metadata/history focus, 404, and full axe.
+
+Evidence is under `.factory/live-polish-1/`, including `cold-check.json`, desktop/mobile screenshots, response HTML, and verifier reports.
 
 ## Known gaps
 

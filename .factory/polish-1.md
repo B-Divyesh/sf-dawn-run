@@ -27,4 +27,6 @@ All 13 findings in `.factory/review-1.md` are resolved. Earlier verification rep
 - Local mobile Lighthouse: 100 performance, 100 accessibility, 100 best practices, 100 SEO; LCP 1.8 s, CLS 0, TBT 0 ms. JSON: `.factory/lighthouse-polish-1/report.json`.
 - Mobile: the 390×844 test asserts 44 px targets, no horizontal overflow, and the active room heading; screenshot is `.factory/mobile-demo-polish-1.png`.
 - 404 visual: `.factory/desktop-404-polish-1.png`.
-- Live evidence: added after the production cold check in `.factory/handoff.md`.
+- Live cold check: `.factory/live-polish-1/cold-check.json` records zero real keys, zero pre-publication score requests, zero axe violations, offline success, four 200 routes, and the designed 404 response.
+- Live browser regression: 10 selected finding-specific Playwright checks passed against `https://dawn-run.sociobot.in` after deployment.
+- Fleet verifier: `.factory/live-polish-1/home/verify.json` and `.factory/live-polish-1/demo/verify.json`; both record one h1, `lang="en"`, a main landmark, no missing alt text, no unlabeled buttons, and no console errors.

@@ -4,7 +4,7 @@ import axe from 'axe-core';
 for (const path of ['/', '/demo', '/privacy', '/terms', '/404.html']) {
   test(`accessibility baseline ${path}`, async ({ page }) => {
     await page.goto(path);
-    await page.addScriptTag({ content: axe.source });
+    await page.evaluate(axe.source);
     const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } }));
     const serious = results.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
     expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
@@ -35,7 +35,7 @@ test('designed 404 has complete shell and route metadata', async ({ page }) => {
 
 test('active game has no serious or critical axe violations', async ({ page }) => {
   await page.goto('/demo');
-  await page.addScriptTag({ content: axe.source });
+  await page.evaluate(axe.source);
   const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } }));
   const serious = results.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
@@ -45,7 +45,7 @@ test('active game has no serious or critical axe violations', async ({ page }) =
 
 test('demo banner and active sample have no axe violations at any impact', async ({ page }) => {
   await page.goto('/demo');
-  await page.addScriptTag({ content: axe.source });
+  await page.evaluate(axe.source);
   const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document));
   expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
 });
