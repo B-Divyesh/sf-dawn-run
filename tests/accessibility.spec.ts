@@ -19,6 +19,19 @@ test('load has no console errors', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('initial Tab starts at the skip link and client navigation focuses the new heading', async ({ page }) => {
+  await page.goto('/');
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to the game' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: /Dawn Run/ })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Demo' })).toBeFocused();
+  await page.getByRole('link', { name: 'Demo' }).click();
+  await expect(page.getByRole('heading', { name: 'Play a six-room daily run' })).toBeFocused();
+});
+
 test('all visible interactive targets meet the 44px mobile baseline', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ['/', '/demo', '/privacy', '/terms']) {

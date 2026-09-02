@@ -32,4 +32,4 @@ The hero is an original generated ink-and-halftone sunrise map illustration, use
 
 ## Difficulty curve
 
-Every daily run has exactly six rooms. Rooms 1–2 teach the selected tool against one hazard. Rooms 3–4 combine an enemy and obstacle. Room 5 offers a cash-out decision. Room 6 is a final chase where the exit is always reachable with careful tool use. Each day’s seed controls the map; tool offers rotate deterministically by a local player id, so choices differ while the route remains shared.
+Every daily run has exactly six rooms. Rooms 1–2 teach the selected tool against one hazard. Rooms 3–4 combine an enemy and obstacle. Room 5 offers a cash-out decision. Room 6 is a final chase where the exit is always reachable with careful tool use. Each day’s seed controls the map. Every player chooses one of the same three tools, so the tactical tradeoff is explicit and the route remains shared.

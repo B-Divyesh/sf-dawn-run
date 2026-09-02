@@ -7,11 +7,14 @@ const demoPlayer = async (page: Page) => {
   await page.reload();
 };
 const east = async (page: Page, count = 5) => { for (let step = 0; step < count; step++) await page.keyboard.press('ArrowRight'); };
-const lanternRunToFive = async (page: Page) => {
-  await demoPlayer(page);
+const lanternRunFromToolChoice = async (page: Page) => {
   await page.getByRole('button', { name: /Lantern/ }).click();
   for (let room = 1; room <= 5; room++) { await page.getByRole('button', { name: /Use Lantern/ }).click(); await east(page); }
   await expect(page.getByRole('heading', { name: 'Cash out or take the final chase?' })).toBeVisible();
+};
+const lanternRunToFive = async (page: Page) => {
+  await demoPlayer(page);
+  await lanternRunFromToolChoice(page);
 };
 const win = async (page: Page) => {
   await lanternRunToFive(page);
@@ -91,10 +94,65 @@ test('@claim:shared-seed a displayed date seed produces matching rooms and a new
   expect(changed.cells).not.toEqual(sameA.cells);
 });
 
-test('@claim:tool-offers each player receives two personal tool offers', async ({ page }) => {
-  await page.goto('/demo');
-  await expect(page.locator('[data-tool]')).toHaveCount(2);
-  await expect(page.getByText('Each player receives two personal tool offers for the same daily map.')).toBeVisible();
+test('@claim:tool-offers every player chooses one of three working tools', async ({ page }) => {
+  for (const player of ['aaa', 'bbb', 'ccc']) {
+    await page.goto('/demo');
+    await page.evaluate(value => { localStorage.clear(); localStorage.setItem('demo:player', value); }, player);
+    await page.reload();
+    await expect(page.locator('[data-tool]')).toHaveCount(3);
+    await expect(page.getByRole('button', { name: /Hook/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Dash/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Lantern/ })).toBeVisible();
+  }
+
+  await page.getByRole('button', { name: /Hook/ }).click();
+  const hookPath = await page.locator('[data-cell]').evaluateAll(items => {
+    const cells = items.map(item => {
+      const [x, y] = (item.getAttribute('data-cell') || '0,0').split(',').map(Number);
+      return { x, y, wall: item.classList.contains('wall'), hazard: item.classList.contains('hazard') };
+    });
+    const key = (x: number, y: number) => `${x},${y}`;
+    const blocked = new Set(cells.filter(cell => cell.wall || cell.hazard).map(cell => key(cell.x, cell.y)));
+    const targets = new Set<string>();
+    for (const wall of cells.filter(cell => cell.wall)) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = wall.x + dx;
+        const y = wall.y + dy;
+        if (x >= 0 && x < 6 && y >= 0 && y < 5 && !blocked.has(key(x, y))) targets.add(key(x, y));
+      }
+    }
+    const queue = [{ x: 0, y: 2, moves: [] as string[] }];
+    const seen = new Set([key(0, 2)]);
+    const directions = [{ dx: 1, dy: 0, key: 'ArrowRight' }, { dx: -1, dy: 0, key: 'ArrowLeft' }, { dx: 0, dy: 1, key: 'ArrowDown' }, { dx: 0, dy: -1, key: 'ArrowUp' }];
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (targets.has(key(current.x, current.y))) return current.moves;
+      for (const direction of directions) {
+        const x = current.x + direction.dx;
+        const y = current.y + direction.dy;
+        if (x < 0 || x >= 6 || y < 0 || y >= 5 || blocked.has(key(x, y)) || seen.has(key(x, y))) continue;
+        seen.add(key(x, y));
+        queue.push({ x, y, moves: [...current.moves, direction.key] });
+      }
+    }
+    return [];
+  });
+  expect(hookPath.length).toBeGreaterThan(0);
+  for (const key of hookPath) await page.keyboard.press(key);
+  await page.getByRole('button', { name: 'Use Hook' }).click();
+  await expect(page.getByText('The hook clears a route.')).toBeVisible();
+
+  await demoPlayer(page);
+  await page.getByRole('button', { name: /Dash/ }).click();
+  await page.getByRole('button', { name: 'Use Dash' }).click();
+  await expect(page.getByRole('gridcell', { name: 'Row 3, column 3: you are here' })).toBeVisible();
+
+  await demoPlayer(page);
+  await page.getByRole('button', { name: /Lantern/ }).click();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('.hud')).toContainText('HEALTH ●●○');
+  await page.getByRole('button', { name: 'Use Lantern' }).click();
+  await expect(page.locator('.hud')).toContainText('HEALTH ●●●');
 });
 
 test('@claim:comparison copy/share/import flow compares a completed result', async ({ page, context }) => {
@@ -151,9 +209,22 @@ test('@claim:frame-rate the fixed simulation heartbeat keeps at least 55 fps', a
   expect(fps).toBeGreaterThanOrEqual(55);
 });
 
-test('@claim:run-duration the game states its planned five to seven minute session length', async ({ page }) => {
+test('@claim:run-duration a fast 37-action Lantern reference run finishes in under 10 seconds', async ({ page }) => {
+  await demoPlayer(page);
+  const started = Date.now();
+  await lanternRunFromToolChoice(page);
+  await page.getByRole('button', { name: 'Run the final chase' }).click();
+  await page.getByRole('button', { name: /Use Lantern/ }).click();
+  await east(page);
+  await expect(page.getByRole('heading', { name: 'You escaped the sixth room.' })).toBeVisible();
+  const elapsed = Date.now() - started;
+  const duration = page.locator('#run-duration');
+  await expect(duration).toBeVisible();
+  expect(Number(await duration.getAttribute('data-seconds'))).toBeLessThan(10);
+  expect(elapsed).toBeLessThan(10_000);
+  await expect(page.locator('.score')).toContainText('37 moves');
   await page.goto('/');
-  await expect(page.getByText('Designed for a 5–7 minute session.')).toBeVisible();
+  await expect(page.getByText('Fast 37-action Lantern runs finish in under 10 seconds')).toBeVisible();
 });
 
 test('@claim:offline-reload a demo reload works offline after its first visit', async ({ browser }) => {
@@ -165,7 +236,7 @@ test('@claim:offline-reload a demo reload works offline after its first visit', 
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await page.reload();
     await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
-    const cachedPaths = await page.evaluate(async () => (await caches.open('dawn-run-20260901-repair-2')).keys().then(keys => keys.map(key => new URL(key.url).pathname)));
+    const cachedPaths = await page.evaluate(async () => (await caches.open('dawn-run-20260902-repair-3')).keys().then(keys => keys.map(key => new URL(key.url).pathname)));
     expect(cachedPaths).toContain('/index.html');
     expect(cachedPaths).toContain('/demo');
     expect(cachedPaths.some(path => path.startsWith('/assets/'))).toBeTruthy();
@@ -186,7 +257,7 @@ test('static delivery config protects CSP, real 404s, immutable assets, and serv
   expect(config.globalHeaders['Content-Security-Policy']).toContain("frame-ancestors 'none'");
   expect(config.routes.find(route => route.route === '/assets/*')?.headers?.['Cache-Control']).toContain('immutable');
   expect(config.responseOverrides['404']).toEqual({ rewrite: '/404.html', statusCode: 404 });
-  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260901-repair-2"); expect(worker).toContain('caches.delete');
+  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260902-repair-3"); expect(worker).toContain('caches.delete');
 });
 
 test('@claim:free-play the start screen has no payment or account flow', async ({ page }) => {
