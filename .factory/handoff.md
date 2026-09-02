@@ -25,7 +25,7 @@ npm test -- --reporter=line
 npm run build
 ```
 
-Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests passed; `dist/` was produced. The production build contains 31.53 KB JS, 11.07 KB CSS, and a 133.22 KB hero image before compression. Every one of the 28 claim commands passed independently in a clean clone. Local mobile Lighthouse scored 100 performance, 100 accessibility, 100 best practices, and 100 SEO, with 1.8 s LCP, 0 CLS, and 0 ms total blocking time.
+Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests passed; `dist/` was produced. The production build contains 31.59 KB JS, 11.07 KB CSS, and a 133.22 KB hero image before compression. Every one of the 28 claim commands passed independently in a clean clone. Local mobile Lighthouse scored 100 performance, 100 accessibility, 100 best practices, and 100 SEO, with 1.8 s LCP, 0 CLS, and 0 ms total blocking time.
 
 ## Deployment and live checks
 

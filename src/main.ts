@@ -218,7 +218,8 @@ async function publishScore() {
     const response = await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submissionPayload()) });
     const body = await response.json() as { message?: string; entries?: LeaderboardItem[] };
     if (!response.ok) throw new Error(body.message || `The score service returned ${response.status}.`);
-    leaderboard = body.entries || []; leaderboardMessage = body.message || 'Your verified score is published.';
+    leaderboard = body.entries || [];
+    leaderboardMessage = demo() ? 'Sample move record checked. Demo data was not published.' : body.message || 'Your verified score is published.';
     if (!demo()) {
       runHistory = runHistory.map((item, index) => index === 0 ? { ...item, published: true } : item);
       localStorage.setItem(historyKey(), JSON.stringify(runHistory));
