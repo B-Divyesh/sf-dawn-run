@@ -138,7 +138,7 @@ test('@claim:demo-isolated header demo stays isolated and exit clears every demo
   expect(await page.evaluate(() => Object.keys(localStorage).some(item => item.startsWith('dawn:')))).toBeFalsy();
   const continuedState = await page.evaluate(() => JSON.parse(localStorage.getItem(`demo:run:${new Date().toISOString().slice(0, 10)}`) || 'null') as GameState);
   await play(page, winningActionsFrom(continuedState).actions); await expect(page.getByRole('heading', { name: 'You escaped the sixth room.' })).toBeVisible();
-  await page.getByRole('button', { name: 'Check sample submission' }).click(); await expect(page.locator('#leaderboard-status')).toContainText('not published');
+  await page.getByRole('button', { name: 'Check sample submission' }).click(); await expect(page.locator('#leaderboard-status')).toHaveText('Sample move record checked. Demo data was not published.');
   await page.getByRole('button', { name: 'Reset demo', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sample run in progress' })).toBeVisible();
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);

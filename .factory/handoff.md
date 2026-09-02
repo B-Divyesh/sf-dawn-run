@@ -29,7 +29,7 @@ Local results: typecheck and lint passed; 8 API tests and 38 Playwright tests pa
 
 ## Deployment and live checks
 
-Deployed the static build to the existing `sf-dawn-run` Static Web App with fleet deployment `96346595-20fd-4cc3-bb9e-1dd3feaef574`. No infrastructure outside the work-order scope was read or changed.
+Deployed the final static build to the existing `sf-dawn-run` Static Web App with fleet deployment `68f0c34b-2b52-42f6-9749-b977677ca00e`. No infrastructure outside the work-order scope was read or changed.
 
 - Live URL: `https://dawn-run.sociobot.in`
 - `/`, `/demo`, `/privacy`, and `/terms`: HTTP 200 with route-specific titles, one h1, metadata, and legal links.
@@ -39,6 +39,7 @@ Deployed the static build to the existing `sf-dawn-run` Static Web App with flee
 - Accessibility: full axe 4.13 scan reported zero violations. The fleet verifier reported zero console errors on `/` and `/demo`.
 - Offline: a fresh service-worker context loaded `/demo` after the network was disabled.
 - Live finding regression: 10 focused Playwright checks passed, covering demo isolation, all five tool rules, nine-run persistence, metadata/history focus, 404, and full axe.
+- Live end-to-end demo check: the bundled move record completed successfully and returned “Sample move record checked. Demo data was not published.”
 
 Evidence is under `.factory/live-polish-1/`, including `cold-check.json`, desktop/mobile screenshots, response HTML, and verifier reports.
 
