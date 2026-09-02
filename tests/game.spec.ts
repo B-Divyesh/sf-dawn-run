@@ -209,7 +209,7 @@ test('@claim:frame-rate the fixed simulation heartbeat keeps at least 55 fps', a
   expect(fps).toBeGreaterThanOrEqual(55);
 });
 
-test('@claim:run-duration a fast 37-action Lantern reference run finishes in under 10 seconds', async ({ page }) => {
+test('@claim:run-duration a fast 37-action Lantern reference run finishes in 1 to 10 seconds', async ({ page }) => {
   await demoPlayer(page);
   const started = Date.now();
   await lanternRunFromToolChoice(page);
@@ -220,11 +220,15 @@ test('@claim:run-duration a fast 37-action Lantern reference run finishes in und
   const elapsed = Date.now() - started;
   const duration = page.locator('#run-duration');
   await expect(duration).toBeVisible();
-  expect(Number(await duration.getAttribute('data-seconds'))).toBeLessThan(10);
-  expect(elapsed).toBeLessThan(10_000);
+  expect(Number(await duration.getAttribute('data-seconds'))).toBeGreaterThanOrEqual(1);
+  expect(Number(await duration.getAttribute('data-seconds'))).toBeLessThanOrEqual(10);
+  // The UI rounds elapsed milliseconds to whole seconds. Keep a 250 ms
+  // tolerance around the displayed 1–10 second claim for wall-clock timing.
+  expect(elapsed).toBeGreaterThanOrEqual(750);
+  expect(elapsed).toBeLessThanOrEqual(10_250);
   await expect(page.locator('.score')).toContainText('37 moves');
   await page.goto('/');
-  await expect(page.getByText('Fast 37-action Lantern runs finish in under 10 seconds')).toBeVisible();
+  await expect(page.getByText('Fast 37-action Lantern runs finish in 1–10 seconds')).toBeVisible();
 });
 
 test('@claim:offline-reload a demo reload works offline after its first visit', async ({ browser }) => {
@@ -236,7 +240,7 @@ test('@claim:offline-reload a demo reload works offline after its first visit', 
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await page.reload();
     await expect(page.locator('h1')).toHaveText('Play a six-room daily run');
-    const cachedPaths = await page.evaluate(async () => (await caches.open('dawn-run-20260902-repair-3')).keys().then(keys => keys.map(key => new URL(key.url).pathname)));
+    const cachedPaths = await page.evaluate(async () => (await caches.open('dawn-run-20260902-repair-4')).keys().then(keys => keys.map(key => new URL(key.url).pathname)));
     expect(cachedPaths).toContain('/index.html');
     expect(cachedPaths).toContain('/demo');
     expect(cachedPaths.some(path => path.startsWith('/assets/'))).toBeTruthy();
@@ -257,7 +261,7 @@ test('static delivery config protects CSP, real 404s, immutable assets, and serv
   expect(config.globalHeaders['Content-Security-Policy']).toContain("frame-ancestors 'none'");
   expect(config.routes.find(route => route.route === '/assets/*')?.headers?.['Cache-Control']).toContain('immutable');
   expect(config.responseOverrides['404']).toEqual({ rewrite: '/404.html', statusCode: 404 });
-  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260902-repair-3"); expect(worker).toContain('caches.delete');
+  const worker = readFileSync('public/sw.js', 'utf8'); expect(worker).toContain("dawn-run-20260902-repair-4"); expect(worker).toContain('caches.delete');
 });
 
 test('@claim:free-play the start screen has no payment or account flow', async ({ page }) => {
