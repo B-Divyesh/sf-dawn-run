@@ -71,6 +71,7 @@ export function createApp(repository) {
     if (limited(client)) { context.header('Retry-After', '60'); return context.json({ message: 'Too many score requests. Wait one minute and try again.' }, 429); }
     await next();
   });
+  app.get('/', context => context.json({ ok: true, service: 'sf-dawn-run-api' }));
   app.get('/health', context => context.json({ ok: true, service: 'sf-dawn-run-api' }));
   app.get('/api/scores', async context => {
     const result = await listScores(repository, context.req.query('date') || '', context.req.query('demo') === '1');
