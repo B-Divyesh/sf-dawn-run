@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "npm --prefix api ci --ignore-scripts --no-audit --no-fund",
+    "postinstall": "npm --prefix api ci --no-audit --no-fund",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
