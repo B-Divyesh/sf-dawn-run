@@ -1,6 +1,21 @@
-# Dawn Run repair 5 handoff
+# Dawn Run verification 7 handoff
 
-## Status: PASS
+## Status: FAIL
+
+**Superseding verification result for candidate
+`de908dedd34fb76504e28e073692c96e92127eeb`: FAIL.** The required fresh
+execution of all `.factory/claims.json` commands produced two failures:
+`settings-history` timed out at 60 seconds and `frame-rate` measured 52.18 fps
+against its 55 fps floor. Both passed on retry, which demonstrates flakiness
+rather than a clean acceptance result. The complete evidence and all other
+passing checks are in `.factory/verification-7.md`.
+
+Required next step: make both claims reliably pass from a clean clone, then
+repeat all 29 declared claim commands before requesting acceptance.
+
+---
+
+The following is the previous repair handoff, retained for historical context.
 
 Repair commit: `05e82bba6e3b8b0c27b5ff0d0d218ef3aefa717e` (`fix: harden score limits and ranking`). It repairs the two release blockers from independent verification 6 while preserving the deterministic six-room game, demo, local progress, and explicit score publication flow.
 
