@@ -23,7 +23,8 @@ All 13 findings in `.factory/review-1.md` are resolved. Earlier verification rep
 - Claim manifest: 28 unique claims and 28 unique `@claim:` tests; every exact manifest command passed from a clean clone.
 - Full suite: 8 Node API tests and 38 Playwright tests passed.
 - Accessibility: every app route and the 404 passed WCAG 2 A/AA scans; the active demo also passed an unfiltered full axe scan.
-- Build budget: 31.02 KB JavaScript, 11.07 KB CSS, and 133.22 KB hero WebP uncompressed; all are below the product budgets.
+- Build budget: 31.53 KB JavaScript, 11.07 KB CSS, and 133.22 KB hero WebP uncompressed; all are below the product budgets.
+- Local mobile Lighthouse: 100 performance, 100 accessibility, 100 best practices, 100 SEO; LCP 1.8 s, CLS 0, TBT 0 ms. JSON: `.factory/lighthouse-polish-1/report.json`.
 - Mobile: the 390×844 test asserts 44 px targets, no horizontal overflow, and the active room heading; screenshot is `.factory/mobile-demo-polish-1.png`.
 - 404 visual: `.factory/desktop-404-polish-1.png`.
 - Live evidence: added after the production cold check in `.factory/handoff.md`.
