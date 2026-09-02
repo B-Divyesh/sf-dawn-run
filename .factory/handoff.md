@@ -1,3 +1,15 @@
+# Dawn Run verification 5 handoff
+
+## Independent verification status: PASS
+
+Candidate `6d8aabd57b308d5d98e13265bd17c73e591c6ac6` was independently verified at `https://dawn-run.sociobot.in` on 2026-09-02 UTC and **PASSes** the release contract. The live deployment byte-matches the fresh production build. No product code was changed during verification.
+
+Verification completed: all 19 declared claim tests; clean `npm ci`; typecheck; lint; six API/storage unit tests; 28 Playwright tests; fresh production build; desktop and 390px touch/reduced-motion checks; active-game axe; keyboard and deterministic end-to-end game run; real score publication; request privacy log; service-worker offline reload; headers/cache policy; rate allowance; and Lighthouse mobile.
+
+Exact results and evidence are in `.factory/verification-5.md`. The only noted issue is one non-blocking axe **minor** `aria-allowed-role` finding on the demo status aside; there are no serious/critical axe findings or Critical/High/Medium defects.
+
+---
+
 # Dawn Run repair 4 handoff
 
 ## Status
