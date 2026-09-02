@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
@@ -7,8 +7,11 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { createRateLimiter, listScores, submitScore } from './score-service.js';
 
-export function createRepository(databasePath) {
-  if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
+export function createRepository(databasePath, persistPath) {
+  if (databasePath !== ':memory:') {
+    mkdirSync(dirname(databasePath), { recursive: true });
+    if (persistPath && existsSync(persistPath)) copyFileSync(persistPath, databasePath);
+  }
   const database = new Database(databasePath);
   database.pragma('journal_mode = DELETE');
   database.pragma('busy_timeout = 5000');
@@ -26,10 +29,20 @@ export function createRepository(databasePath) {
     expires_at TEXT NOT NULL,
     PRIMARY KEY (id, date)
   ); CREATE INDEX IF NOT EXISTS scores_date_rank ON scores(date, score DESC, duration_seconds ASC);`);
+  const persist = () => {
+    if (!persistPath || databasePath === ':memory:') return;
+    mkdirSync(dirname(persistPath), { recursive: true });
+    const nextPath = `${persistPath}.next`;
+    rmSync(nextPath, { force: true });
+    copyFileSync(databasePath, nextPath);
+    renameSync(nextPath, persistPath);
+  };
+  persist();
   const rowToItem = row => row ? ({ id: row.id, date: row.date, nickname: row.nickname, score: row.score, result: row.result, tool: row.tool, durationSeconds: row.duration_seconds, replay: row.replay, actions: row.actions, verified: true, createdAt: row.created_at, expiresAt: row.expires_at }) : undefined;
   return {
     async list(date) {
-      database.prepare('DELETE FROM scores WHERE expires_at <= ?').run(new Date().toISOString());
+      const removed = database.prepare('DELETE FROM scores WHERE expires_at <= ?').run(new Date().toISOString());
+      if (removed.changes) persist();
       return database.prepare('SELECT * FROM scores WHERE date = ? ORDER BY score DESC, duration_seconds ASC LIMIT 20').all(date).map(rowToItem);
     },
     async upsertBest(item) {
@@ -38,9 +51,10 @@ export function createRepository(databasePath) {
       database.prepare(`INSERT INTO scores (id,date,nickname,score,result,tool,duration_seconds,replay,actions,created_at,expires_at)
         VALUES (@id,@date,@nickname,@score,@result,@tool,@durationSeconds,@replay,@actions,@createdAt,@expiresAt)
         ON CONFLICT(id,date) DO UPDATE SET nickname=excluded.nickname,score=excluded.score,result=excluded.result,tool=excluded.tool,duration_seconds=excluded.duration_seconds,replay=excluded.replay,actions=excluded.actions,created_at=excluded.created_at,expires_at=excluded.expires_at`).run(item);
+      persist();
       return item;
     },
-    close() { database.close(); },
+    close() { persist(); database.close(); },
   };
 }
 
@@ -76,7 +90,8 @@ export function createApp(repository) {
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const databasePath = process.env.DATABASE_PATH || '/data/scores.db';
+  const databasePath = process.env.DATABASE_PATH || '/tmp/dawn-run.sqlite';
+  const persistPath = process.env.PERSIST_PATH || '/data/dawn-run-scores-v3.sqlite';
   const port = Number(process.env.PORT || 8080);
-  serve({ fetch: createApp(createRepository(databasePath)).fetch, port }, info => console.log(`sf-dawn-run-api listening on ${info.port}`));
+  serve({ fetch: createApp(createRepository(databasePath, persistPath)).fetch, port }, info => console.log(`sf-dawn-run-api listening on ${info.port}`));
 }

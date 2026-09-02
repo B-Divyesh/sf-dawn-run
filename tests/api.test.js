@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { applyAction, createGame, roomFor, scoreGame, seedForDate, selectTool } from '../api/game-core.js';
 import { createRateLimiter, listScores, submitScore } from '../api/score-service.js';
 import { createApp, createRepository } from '../api/server.js';
@@ -85,4 +88,18 @@ test('Hono API publishes to SQLite, returns no-store, and blocks foreign origins
   const blocked = await app.request(`/api/scores?date=${date}`, { headers: { origin: 'https://example.com', 'x-forwarded-for': '198.51.100.10' } });
   assert.equal(blocked.status, 403);
   repository.close();
+});
+
+test('SQLite snapshot under the data mount restores after a process restart', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dawn-run-'));
+  const active = join(directory, 'active.sqlite');
+  const snapshot = join(directory, 'data', 'scores.sqlite');
+  const first = createRepository(active, snapshot);
+  await submitScore(first, completedPayload(), new Date('2026-09-02T12:00:00Z'));
+  first.close();
+  rmSync(active, { force: true });
+  const restored = createRepository(active, snapshot);
+  assert.equal((await restored.list(date))[0].nickname, 'Verifier');
+  restored.close();
+  rmSync(directory, { recursive: true, force: true });
 });
