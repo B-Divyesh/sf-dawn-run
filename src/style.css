@@ -586,6 +586,20 @@ td code {
   max-width: 240px;
   overflow-wrap: anywhere;
 }
+.table-replay summary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 750;
+}
+.table-replay code {
+  min-width: 220px;
+  padding: 8px;
+  background: var(--night);
+  color: var(--paper);
+}
 .reduced-effects *,
 .reduced-effects *::before,
 .reduced-effects *::after {

@@ -181,7 +181,7 @@ test('@claim:accessible-board active grid has valid row ownership and all named 
 test('@claim:score-publishing completed replay is verified, published, and returned by the leaderboard', async ({ page }) => {
   await win(page, '/'); await page.locator('#nickname').fill('RouteTester'); await page.getByRole('button', { name: 'Publish verified score' }).click();
   await expect(page.locator('#leaderboard-status')).toContainText('verified and published'); await expect(page.getByRole('cell', { name: 'RouteTester' })).toBeVisible();
-  const publishedReplay = await page.getByRole('cell').filter({ has: page.locator('code') }).first().innerText(); expect(publishedReplay).toContain('Dawn Run v2');
+  const publishedReplay = await page.locator('tbody code').first().textContent(); expect(publishedReplay).toContain('Dawn Run v2');
   await page.getByRole('button', { name: 'Load today’s scores' }).click(); await expect(page.getByRole('cell', { name: 'RouteTester' })).toBeVisible();
 });
 
