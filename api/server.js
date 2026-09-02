@@ -28,7 +28,8 @@ export function createRepository(databasePath, persistPath) {
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     PRIMARY KEY (id, date)
-  ); CREATE INDEX IF NOT EXISTS scores_date_rank ON scores(date, score DESC, duration_seconds ASC);`);
+  ); DROP INDEX IF EXISTS scores_date_rank;
+  CREATE INDEX IF NOT EXISTS scores_date_rank ON scores(date, score DESC, created_at ASC);`);
   const persist = () => {
     if (!persistPath || databasePath === ':memory:') return;
     mkdirSync(dirname(persistPath), { recursive: true });
@@ -43,11 +44,11 @@ export function createRepository(databasePath, persistPath) {
     async list(date) {
       const removed = database.prepare('DELETE FROM scores WHERE expires_at <= ?').run(new Date().toISOString());
       if (removed.changes) persist();
-      return database.prepare('SELECT * FROM scores WHERE date = ? ORDER BY score DESC, duration_seconds ASC LIMIT 20').all(date).map(rowToItem);
+      return database.prepare('SELECT * FROM scores WHERE date = ? ORDER BY score DESC, created_at ASC LIMIT 20').all(date).map(rowToItem);
     },
     async upsertBest(item) {
       const existing = rowToItem(database.prepare('SELECT * FROM scores WHERE id = ? AND date = ?').get(item.id, item.date));
-      if (existing && existing.score > item.score) return existing;
+      if (existing && existing.score >= item.score) return existing;
       database.prepare(`INSERT INTO scores (id,date,nickname,score,result,tool,duration_seconds,replay,actions,created_at,expires_at)
         VALUES (@id,@date,@nickname,@score,@result,@tool,@durationSeconds,@replay,@actions,@createdAt,@expiresAt)
         ON CONFLICT(id,date) DO UPDATE SET nickname=excluded.nickname,score=excluded.score,result=excluded.result,tool=excluded.tool,duration_seconds=excluded.duration_seconds,replay=excluded.replay,actions=excluded.actions,created_at=excluded.created_at,expires_at=excluded.expires_at`).run(item);
@@ -67,7 +68,7 @@ export function createApp(repository) {
     const origin = context.req.header('origin');
     const allowed = !origin || origin === 'https://dawn-run.sociobot.in' || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin);
     if (!allowed) return context.json({ message: 'Cross-origin score requests are not allowed.' }, 403);
-    const client = context.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const client = trustedPeerKey(context);
     if (limited(client)) { context.header('Retry-After', '60'); return context.json({ message: 'Too many score requests. Wait one minute and try again.' }, 429); }
     await next();
   });
@@ -89,10 +90,26 @@ export function createApp(repository) {
   return app;
 }
 
+/**
+ * Rate limits intentionally use only the TCP peer that delivered this request.
+ * At the public edge that peer is the trusted proxy hop; for direct local
+ * development it is the direct socket source. Forwarding headers are supplied
+ * by callers and are never part of a limiter identity.
+ */
+export function trustedPeerKey(context) {
+  const address = context.env?.incoming?.socket?.remoteAddress;
+  return address ? `peer:${address}` : 'peer:unavailable';
+}
+
+export function startServer({ repository, port = Number(process.env.PORT || 8080), hostname, onListen } = {}) {
+  const activeRepository = repository || createRepository(
+    process.env.DATABASE_PATH || '/tmp/dawn-run.sqlite',
+    process.env.PERSIST_PATH || '/data/dawn-run-scores-v3.sqlite',
+  );
+  return serve({ fetch: createApp(activeRepository).fetch, port, hostname }, onListen);
+}
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
-  const databasePath = process.env.DATABASE_PATH || '/tmp/dawn-run.sqlite';
-  const persistPath = process.env.PERSIST_PATH || '/data/dawn-run-scores-v3.sqlite';
-  const port = Number(process.env.PORT || 8080);
-  serve({ fetch: createApp(createRepository(databasePath, persistPath)).fetch, port }, info => console.log(`sf-dawn-run-api listening on ${info.port}`));
+  startServer({ onListen: info => console.log(`sf-dawn-run-api listening on ${info.port}`) });
 }

@@ -41,7 +41,7 @@ export function publicEntry(item, rank) {
 
 function ranked(items) {
   return [...items]
-    .sort((a, b) => b.score - a.score || a.durationSeconds - b.durationSeconds || a.createdAt.localeCompare(b.createdAt))
+    .sort((a, b) => b.score - a.score || a.createdAt.localeCompare(b.createdAt))
     .slice(0, 20)
     .map((item, index) => publicEntry(item, index + 1));
 }
@@ -58,7 +58,7 @@ export async function submitScore(repository, body, now = new Date()) {
   const nickname = cleanNickname(body.nickname);
   if (nickname.length < 2) return { status: 400, body: { message: 'Nickname must contain 2–16 letters or numbers.' } };
   if (!validDate(body.date, now)) return { status: 400, body: { message: 'Only runs from the last seven UTC days can be published.' } };
-  if (!Number.isInteger(body.durationSeconds) || body.durationSeconds < 0 || body.durationSeconds > 3600) return { status: 400, body: { message: 'Run time is outside the accepted range.' } };
+  if (!Number.isInteger(body.durationSeconds) || body.durationSeconds < 0 || body.durationSeconds > 3600) return { status: 400, body: { message: 'Reported time is outside the accepted range.' } };
   const checked = verifyReplay({ date: body.date, seed: body.seed, tool: body.tool, result: body.result, score: body.score, actions: body.actions });
   if (!checked.valid) return { status: 422, body: { message: checked.error || 'The replay could not be verified.' } };
   const createdAt = now.toISOString();

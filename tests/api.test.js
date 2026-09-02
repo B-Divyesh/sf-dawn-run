@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import test from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyAction, createGame, roomFor, scoreGame, seedForDate, selectTool } from '../api/game-core.js';
 import { createRateLimiter, listScores, submitScore } from '../api/score-service.js';
-import { createApp, createRepository } from '../api/server.js';
+import { createApp, createRepository, startServer } from '../api/server.js';
 
 const date = '2026-09-02';
 const seed = seedForDate(date);
@@ -58,6 +59,19 @@ test('score service verifies and publishes a deterministic completed replay', as
   assert.equal(listed.body.entries[0].nickname, 'Verifier'); assert.equal(listed.body.entries[0].rank, 1);
 });
 
+test('@claim:leaderboard-time-integrity reported time cannot break a score tie', async () => {
+  const repository = memoryRepository();
+  const slow = { ...completedPayload(), nickname: 'SlowRoute', durationSeconds: 360 };
+  const forgedFast = { ...completedPayload(), nickname: 'ZeroRoute', durationSeconds: 0 };
+  await submitScore(repository, slow, new Date('2026-09-02T12:00:00Z'));
+  await submitScore(repository, forgedFast, new Date('2026-09-02T12:01:00Z'));
+  const listed = await listScores(repository, date, false, new Date('2026-09-02T12:01:00Z'));
+  assert.deepEqual(listed.body.entries.slice(0, 2).map(entry => [entry.nickname, entry.rank, entry.durationSeconds]), [
+    ['SlowRoute', 1, 360],
+    ['ZeroRoute', 2, 0],
+  ]);
+});
+
 test('@claim:replay-tamper score service rejects an altered score', async () => {
   const repository = memoryRepository(); const tampered = completedPayload(); tampered.score++;
   const rejected = await submitScore(repository, tampered, new Date('2026-09-02T12:00:00Z')); assert.equal(rejected.status, 422); assert.equal(repository.items.length, 0);
@@ -79,6 +93,26 @@ test('score request allowance rejects the eleventh request and resets after one 
   for (let request = 0; request < 10; request++) assert.equal(limited('198.51.100.2', 1_000 + request), false);
   assert.equal(limited('198.51.100.2', 2_000), true);
   assert.equal(limited('198.51.100.2', 62_000), false);
+});
+
+test('@regression:forwarded-header-bypass a changed caller header cannot restore access', async t => {
+  const repository = createRepository(':memory:');
+  const server = startServer({ repository, port: 0, hostname: '127.0.0.1' });
+  await once(server, 'listening');
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise(resolve => server.close(resolve));
+    repository.close();
+  });
+  const address = server.address();
+  assert.equal(typeof address, 'object');
+  const endpoint = `http://127.0.0.1:${address.port}/api/scores?date=${date}`;
+  const request = forwarded => fetch(endpoint, { headers: { 'x-forwarded-for': forwarded } });
+  for (let attempt = 0; attempt < 10; attempt++) assert.equal((await request('198.51.100.42')).status, 200);
+  const blocked = await request('198.51.100.42');
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.headers.get('retry-after'), '60');
+  assert.equal((await request('203.0.113.244')).status, 429);
 });
 
 test('Hono API publishes to SQLite, returns no-store, and blocks foreign origins', async () => {

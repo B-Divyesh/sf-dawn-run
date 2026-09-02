@@ -10,7 +10,7 @@ function scoreApi() {
     async list(date: string) { return scores.filter(item => item.date === date); },
     async upsertBest(item: StoredScore) {
       const index = scores.findIndex(existing => existing.id === item.id && existing.date === item.date);
-      if (index >= 0 && scores[index].score > item.score) return scores[index];
+      if (index >= 0 && scores[index].score >= item.score) return scores[index];
       if (index >= 0) scores[index] = item; else scores.push(item);
       return item;
     },

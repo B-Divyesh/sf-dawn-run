@@ -30,7 +30,7 @@ The production build writes the static client to `dist/`.
 
 The current run, settings, random player code, best score, and eight recent results stay in browser storage. Nothing is published until the player chooses **Publish verified score**.
 
-Publication sends a nickname, date, tool, score, time, and move record to Dawn Run. The API rebuilds the run, rejects altered scores, and removes published results after seven days. Demo submissions are checked against sample standings but never stored.
+Publication sends a nickname, date, tool, score, reported time, and move record to Dawn Run. The API rebuilds the run, rejects altered scores, and removes published results after seven days. Scores and move records are checked; reported time does not change rank. Demo submissions are checked against sample standings but never stored.
 
 Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores scores in a SQLite snapshot at `/data/dawn-run-scores-v3.sqlite`. No account, third-party script, analytics service, or payment service is used. The game opens offline after the first visit.
 
