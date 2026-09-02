@@ -1,101 +1,356 @@
 import './style.css';
+import { BOARD_HEIGHT, BOARD_WIDTH, MAX_HEALTH, REQUIRED_BEACONS, TOOLS, applyAction, createGame, hashString, replayText, roomFor, scoreGame, seedForDate, selectTool, toolOffers, type GameState, type Point } from '../api/game-core.js';
 
-type Tool = 'Hook' | 'Dash' | 'Lantern';
-type Phase = 'choose' | 'play' | 'cashout' | 'end' | 'pause';
-type Point = { x: number; y: number };
-type Room = { walls: Point[]; coins: Point[]; hazard: Point; enemy: Point };
-type Result = 'escaped' | 'cashed out' | 'caught';
-type Game = { phase: Phase; room: number; tool: Tool | null; player: Point; health: number; coins: number; log: string[]; pausedFrom?: 'play'; message: string; roomUsed: boolean; finished?: Result; cleared: string[]; collected: string[]; enemy: Point | null; startedAt?: number; finishedAt?: number };
+type Tool = 'Hook' | 'Dash' | 'Lantern' | 'Decoy' | 'Cloak';
+type Settings = { coordinates: boolean; reducedEffects: boolean; nickname: string };
+type HistoryItem = { id: string; date: string; result: string; score: number; tool: string; moves: number; duration: number; replay: string; published: boolean };
+type LeaderboardItem = { rank?: number; nickname: string; score: number; result: string; tool: string; durationSeconds: number; replay: string; verified: boolean; createdAt?: string };
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const today = new Date().toISOString().slice(0, 10);
-const tools: Tool[] = ['Hook', 'Dash', 'Lantern'];
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const seed = seedForDate(today);
 const demo = () => location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
 const prefix = () => demo() ? 'demo:' : 'dawn:';
 const runKey = () => `${prefix()}run:${today}`;
-function hash(input: string) { let value = 2166136261; for (const char of input) value = Math.imul(value ^ char.charCodeAt(0), 16777619); return value >>> 0; }
-function rng(seed: number) { return () => { seed |= 0; seed = seed + 0x6d2b79f5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const seed = hash(today).toString(36).toUpperCase();
-function same(a: Point, b: Point) { return a.x === b.x && a.y === b.y; }
-function pointKey(room: number, value: Point) { return `${room}:${value.x},${value.y}`; }
-function inBoard(value: Point) { return value.x >= 0 && value.x < 6 && value.y >= 0 && value.y < 5; }
-function offers() { return tools; }
-function newGame(): Game { return { phase: 'choose', room: 1, tool: null, player: { x: 0, y: 2 }, health: 3, coins: 0, log: [], message: 'Pick one of three tools for all six rooms.', roomUsed: false, cleared: [], collected: [], enemy: null }; }
-function point(value: unknown): value is Point { return !!value && typeof value === 'object' && Number.isInteger((value as Point).x) && Number.isInteger((value as Point).y); }
-function validGame(value: unknown): value is Game { if (!value || typeof value !== 'object') return false; const game = value as Partial<Game>; return ['choose', 'play', 'cashout', 'end', 'pause'].includes(game.phase || '') && Number.isInteger(game.room) && game.room! >= 1 && game.room! <= 6 && (game.tool === null || tools.includes(game.tool as Tool)) && point(game.player) && Number.isInteger(game.health) && game.health! >= 0 && game.health! <= 3 && Number.isInteger(game.coins) && Array.isArray(game.log) && game.log.every(item => typeof item === 'string') && typeof game.message === 'string' && typeof game.roomUsed === 'boolean' && Array.isArray(game.cleared) && Array.isArray(game.collected) && (game.enemy === null || point(game.enemy)); }
-function load(): Game { try { const stored = localStorage.getItem(runKey()); if (!stored) return newGame(); const parsed: unknown = JSON.parse(stored); return validGame(parsed) ? parsed : newGame(); } catch { return newGame(); } }
-let game = load();
-let discardingDemo = false;
-function save() { localStorage.setItem(runKey(), JSON.stringify(game)); }
+const settingsKey = () => `${prefix()}settings`;
+const historyKey = () => `${prefix()}history`;
+const playerKey = () => `${prefix()}player`;
+const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
+const pointKey = (room: number, value: Point) => `${room}:${value.x},${value.y}`;
+const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]!);
 
-function choosePoint(random: () => number, choices: Point[], used: Point[] = []) { const available = choices.filter(choice => !used.some(item => same(choice, item))); return clone(available[Math.floor(random() * available.length)] || choices[0]); }
-/** The printed daily seed is the source for every room layout; the middle trail stays clear so the game remains learnable. */
-function roomFor(room: number): Room {
-  const random = rng(hash(`${seed}:room:${room}`));
-  const slots = [{x:1,y:0},{x:2,y:0},{x:3,y:0},{x:4,y:0},{x:1,y:1},{x:3,y:1},{x:4,y:1},{x:1,y:3},{x:2,y:3},{x:3,y:3},{x:4,y:3},{x:1,y:4},{x:2,y:4},{x:3,y:4},{x:4,y:4}];
-  const walls: Point[] = [];
-  while (walls.length < (room === 6 ? 4 : 2 + room % 2)) walls.push(choosePoint(random, slots, walls));
-  const free = slots.filter(slot => !walls.some(wall => same(slot, wall)));
-  const hazard = room === 1 ? {x:0,y:1} : choosePoint(random, free);
-  const firstCoin = choosePoint(random, free, [hazard]);
-  const secondCoin = choosePoint(random, free, [hazard, firstCoin]);
-  const enemy = choosePoint(random, [{x:5,y:4},{x:5,y:0},{x:4,y:4},{x:4,y:0}]);
-  return { walls, coins: [firstCoin, secondCoin], hazard, enemy };
+function playerId() {
+  const existing = localStorage.getItem(playerKey());
+  if (existing) return existing;
+  const created = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  localStorage.setItem(playerKey(), created);
+  return created;
 }
-function score() { return Math.max(0, (game.room - 1) * 100 + game.coins * 25 + game.health * 20); }
-function direction(dx: number, dy: number) { return dx === 1 ? 'E' : dx === -1 ? 'W' : dy === 1 ? 'S' : 'N'; }
-function replay() { return `Dawn Run v1 | seed=${seed} | tool=${game.tool} | result=${game.finished} | score=${score()} | replay=${game.log.join('-') || 'none'}`; }
 
-function choose(tool: Tool) { game = newGame(); game.tool = tool; game.startedAt = Date.now(); game.phase = 'play'; game.message = `${tool} packed. Reach the flag in each room.`; save(); render(); }
-function end(result: Result) { game.phase = 'end'; game.finished = result; game.finishedAt = Date.now(); game.message = result === 'escaped' ? 'You crossed the final flag.' : result === 'cashed out' ? 'You banked a careful score.' : 'The dawn route closed behind you.'; }
-function collect(room: Room) { const coin = room.coins.find(item => same(item, game.player) && !game.collected.includes(pointKey(game.room, item))); if (coin) { game.collected.push(pointKey(game.room, coin)); game.coins++; game.message = 'You found a dawn token.'; } if (same(game.player, room.hazard)) { game.health--; game.message = 'The bramble cost one health.'; } if (game.health <= 0) end('caught'); }
-function enemyTurn(room: Room) {
-  if (game.room === 1) return;
-  if (!game.enemy) game.enemy = clone(room.enemy);
-  for (let step = 0; step < (game.room === 6 ? 2 : 1); step++) {
-    const watcher: Point = game.enemy!;
-    const dx = Math.sign(game.player.x - watcher.x);
-    const dy = Math.sign(game.player.y - watcher.y);
-    const next: Point = Math.abs(game.player.x - watcher.x) >= Math.abs(game.player.y - watcher.y) ? {x: watcher.x + dx, y: watcher.y} : {x: watcher.x, y: watcher.y + dy};
-    if (inBoard(next) && !room.walls.some(wall => same(wall, next) && !game.cleared.includes(pointKey(game.room, wall)))) game.enemy = next;
-    if (same(game.enemy!, game.player)) { game.health--; game.message = 'The watcher caught up. Move on.'; game.enemy = clone(room.enemy); if (game.health <= 0) { end('caught'); return; } }
+function defaultSettings(): Settings {
+  const code = hashString(playerId()).toString(36).slice(0, 4).toUpperCase().padStart(4, '0');
+  return { coordinates: false, reducedEffects: false, nickname: `Walker-${code}` };
+}
+
+function cleanNickname(value: string) {
+  return value.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 16);
+}
+
+function loadSettings(): Settings {
+  const fallback = defaultSettings();
+  try {
+    const value = JSON.parse(localStorage.getItem(settingsKey()) || 'null') as Partial<Settings> | null;
+    return value && typeof value.coordinates === 'boolean' && typeof value.reducedEffects === 'boolean' && typeof value.nickname === 'string'
+      ? { coordinates: value.coordinates, reducedEffects: value.reducedEffects, nickname: cleanNickname(value.nickname) || fallback.nickname }
+      : fallback;
+  } catch { return fallback; }
+}
+
+function validGame(value: unknown): value is GameState {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as Partial<GameState>;
+  return state.version === 2 && state.date === today && ['choose', 'play', 'cashout', 'end', 'pause'].includes(state.phase || '') && Number.isInteger(state.room) && state.room! >= 1 && state.room! <= 6 && (state.tool === null || TOOLS.includes(state.tool || '')) && !!state.player && Number.isInteger(state.player.x) && Number.isInteger(state.player.y) && Number.isInteger(state.health) && Number.isInteger(state.beacons) && Array.isArray(state.log) && state.log.every(item => typeof item === 'string') && typeof state.message === 'string' && typeof state.roomUsed === 'boolean' && Array.isArray(state.cleared) && Array.isArray(state.collected) && Number.isInteger(state.turn) && Number.isInteger(state.enemyDelay) && Number.isInteger(state.shield);
+}
+
+function loadGame() {
+  try {
+    const stored = localStorage.getItem(runKey());
+    const parsed: unknown = stored ? JSON.parse(stored) : null;
+    const loaded = validGame(parsed) ? parsed : createGame(today);
+    if (loaded.phase === 'play') {
+      loaded.pausedFrom = 'play';
+      loaded.phase = 'pause';
+      loaded.message = 'Your saved run is paused. Resume when you are ready.';
+    }
+    return loaded;
+  } catch { return createGame(today); }
+}
+
+function loadHistory(): HistoryItem[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(historyKey()) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(item => item && typeof item === 'object').slice(0, 8) as HistoryItem[] : [];
+  } catch { return []; }
+}
+
+let settings = loadSettings();
+let game = loadGame();
+let runHistory = loadHistory();
+let leaderboard: LeaderboardItem[] = [];
+let leaderboardMessage = 'Load today’s verified scores when you are online.';
+let leaderboardBusy = false;
+let discardingDemo = false;
+
+function saveGame() { localStorage.setItem(runKey(), JSON.stringify(game)); }
+function saveSettings() {
+  localStorage.setItem(settingsKey(), JSON.stringify(settings));
+  document.documentElement.classList.toggle('reduced-effects', settings.reducedEffects);
+}
+
+function recordHistory() {
+  if (game.phase !== 'end' || !game.finished) return;
+  const replay = replayText(game, seed);
+  const id = hashString(replay).toString(36);
+  const duration = game.startedAt && game.finishedAt ? Math.max(0, Math.round((game.finishedAt - game.startedAt) / 1000)) : 0;
+  if (!runHistory.some(item => item.id === id)) {
+    runHistory = [{ id, date: today, result: game.finished, score: scoreGame(game), tool: game.tool || 'None', moves: game.log.length, duration, replay, published: false }, ...runHistory].slice(0, 8);
+    localStorage.setItem(historyKey(), JSON.stringify(runHistory));
   }
 }
-function advance() { if (game.room === 5) { game.phase = 'cashout'; game.message = 'You reached the fifth flag. Take the score or face the final chase.'; return; } if (game.room === 6) { end('escaped'); return; } game.room++; game.player = {x:0,y:2}; game.enemy = null; game.roomUsed = false; game.message = `Room ${game.room}. The watcher now moves after you.`; }
-function move(dx: number, dy: number) { if (game.phase !== 'play') return; const room = roomFor(game.room); const next = {x:game.player.x + dx,y:game.player.y + dy}; if (!inBoard(next) || room.walls.some(wall => same(wall, next) && !game.cleared.includes(pointKey(game.room, wall)))) { game.message = 'That route is blocked. Try another tile or use your tool.'; save(); render(); return; } game.player = next; game.log.push(`R${game.room}${direction(dx, dy)}`); collect(room); if (game.phase === 'play') enemyTurn(room); if (game.phase === 'play' && same(game.player, {x:5,y:2})) advance(); save(); render(); }
-function useTool() { if (game.phase !== 'play' || !game.tool) return; if (game.roomUsed) { game.message = "This room's tool use is spent."; save(); render(); return; } const room = roomFor(game.room); if (game.tool === 'Hook') { const target = room.walls.find(wall => Math.abs(wall.x - game.player.x) + Math.abs(wall.y - game.player.y) === 1 && !game.cleared.includes(pointKey(game.room, wall))); if (!target) { game.message = 'Stand beside a rock to use the hook.'; save(); render(); return; } game.cleared.push(pointKey(game.room, target)); game.log.push(`R${game.room}H`); game.roomUsed = true; game.message = 'The hook clears a route.'; } else if (game.tool === 'Dash') { const target = {x:Math.min(5, game.player.x + 2),y:game.player.y}; if (room.walls.some(wall => same(wall, target) && !game.cleared.includes(pointKey(game.room, wall)))) { game.message = 'The dash route is blocked.'; save(); render(); return; } game.player = target; game.log.push(`R${game.room}D`); game.roomUsed = true; game.message = 'You dash east two tiles.'; collect(room); if (game.phase === 'play') enemyTurn(room); if (same(game.player, {x:5,y:2})) advance(); } else { game.health = Math.min(3, game.health + 1); game.roomUsed = true; game.log.push(`R${game.room}L`); game.message = 'The lantern restores one health.'; } save(); render(); }
-function finalChase() { game.phase = 'play'; game.room = 6; game.player = {x:0,y:2}; game.enemy = null; game.roomUsed = false; game.log.push('CHASE'); game.message = 'Final chase: the watcher moves twice after each step.'; save(); render(); }
-function cashOut() { end('cashed out'); save(); render(); }
-function restart() { localStorage.removeItem(runKey()); game = newGame(); render(); }
-function pause() { if (game.phase === 'play') { game.pausedFrom = 'play'; game.phase = 'pause'; game.message = 'Paused. Resume when you are ready.'; save(); render(); } }
-function resume() { if (game.phase === 'pause') { game.phase = game.pausedFrom || 'play'; game.message = 'Run resumed.'; save(); render(); } }
+
+function choose(tool: Tool) {
+  if (!toolOffers(playerId(), today).includes(tool)) return;
+  game = selectTool(createGame(today), tool) as GameState;
+  saveGame();
+  renderGame('[role="grid"]');
+}
+
+function runAction(action: string, preferredFocus?: string) {
+  const priorPhase = game.phase;
+  applyAction(game, action, seed);
+  if (game.phase === 'end' && priorPhase !== 'end') recordHistory();
+  saveGame();
+  const fallback = game.phase === 'end' ? '#result-heading' : game.phase === 'cashout' ? '[data-action="final"]' : '[role="grid"]';
+  renderGame(game.phase === 'play' ? preferredFocus || fallback : fallback);
+}
+
+function pause() {
+  if (game.phase !== 'play') return;
+  game.pausedFrom = 'play'; game.phase = 'pause'; game.message = 'Paused. Resume when you are ready.';
+  saveGame(); renderGame('[data-action="resume"]');
+}
+function resume() {
+  if (game.phase !== 'pause') return;
+  game.phase = game.pausedFrom || 'play'; game.message = 'Run resumed.';
+  saveGame(); renderGame('[role="grid"]');
+}
+function restart() {
+  localStorage.removeItem(runKey()); game = createGame(today); leaderboard = [];
+  leaderboardMessage = 'Load today’s verified scores when you are online.';
+  renderGame('[data-tool]');
+}
 function clearDemo() { Object.keys(localStorage).filter(key => key.startsWith('demo:')).forEach(key => localStorage.removeItem(key)); }
 function resetDemo() { discardingDemo = true; clearDemo(); location.assign('/demo'); }
 function goReal() { discardingDemo = true; clearDemo(); location.assign('/'); }
-async function copyText(text: string) { try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; } } catch { /* use the selection fallback below */ } const area = document.createElement('textarea'); area.value = text; area.className = 'copy-buffer'; area.setAttribute('readonly', ''); document.body.append(area); area.select(); const copied = document.execCommand('copy'); area.remove(); if (!copied) throw new Error('copy unavailable'); }
-async function copyResult() { try { await copyText(replay()); game.message = 'Result copied. Paste it into Compare a copied result.'; } catch { game.message = 'Copy is unavailable here. Select the replay text to copy it.'; } save(); render(); }
-async function shareResult() { const share: ((data: ShareData) => Promise<void>) | undefined = (navigator as unknown as { share?: (data: ShareData) => Promise<void> }).share; try { if (share) await share({title:'Dawn Run result',text:replay()}); else await copyText(replay()); game.message = share ? 'Share sheet opened.' : 'Result copied to share.'; } catch { game.message = 'Sharing was cancelled. Your result remains on this device.'; } save(); render(); }
-function saveComparison() { localStorage.setItem(`${prefix()}comparison:${today}`, replay()); game.message = 'Your result is saved for comparison on this device.'; save(); render(); }
-function compareResult() { const input = document.querySelector<HTMLInputElement>('#comparison-input'); const output = document.querySelector<HTMLElement>('#comparison-result'); const match = /seed=([^|]+)\s*\|\s*tool=(Hook|Dash|Lantern)\s*\|\s*result=(escaped|cashed out|caught)\s*\|\s*score=(\d+)\s*\|\s*replay=(.+)$/i.exec(input?.value.trim() || ''); if (!output) return; if (!match) { output.textContent = 'That result is not in Dawn Run replay format. Copy a complete result and try again.'; return; } output.textContent = `${match[1].trim() === seed ? 'Same daily route.' : 'Different daily route.'} Their ${match[2]} run ${match[3].toLowerCase()} with ${match[4]} points. Replay: ${match[5].trim()}.`; }
 
-function toolCard(tool: Tool) { const text: Record<Tool,string> = {Hook:'Clear one rock beside you.',Dash:'Move east two tiles once per room.',Lantern:'Restore one health once per room.'}; return `<button class="tool" data-tool="${tool}"><span class="tool-name">${tool}</span><span>${text[tool]}</span></button>`; }
-function board() { const room = roomFor(game.room); const cells = Array.from({length:30}, (_, index) => { const cell = {x:index % 6,y:Math.floor(index / 6)}; let type = 'ground'; let label = 'open route'; if (same(cell,{x:5,y:2})) { type='exit'; label='exit flag'; } if (room.walls.some(wall => same(wall,cell)) && !game.cleared.includes(pointKey(game.room,cell))) { type='wall'; label='rock, blocked'; } if (room.coins.some(coin => same(coin,cell)) && !game.collected.includes(pointKey(game.room,cell))) { type='coin'; label='dawn token'; } if (same(room.hazard,cell)) { type='hazard'; label='bramble, costs one health'; } if (game.room > 1 && same(game.enemy || room.enemy,cell)) { type='enemy'; label='watcher'; } if (same(game.player,cell)) { type='player'; label='you are here'; } const icon = type === 'player' ? '●' : type === 'exit' ? '⚑' : type === 'wall' ? '▦' : type === 'coin' ? '✦' : type === 'hazard' ? '✕' : type === 'enemy' ? '◉' : ''; return `<div class="tile ${type}" role="gridcell" data-cell="${cell.x},${cell.y}" aria-label="Row ${cell.y + 1}, column ${cell.x + 1}: ${label}"><span aria-hidden="true">${icon}</span></div>`; }).join(''); return `<section class="board-wrap" aria-label="Room ${game.room} board"><p class="map-key" id="board-key"><span><i class="dot you"></i>You</span><span><i class="dot flag"></i>Exit</span><span><i class="dot watch"></i>Watcher</span></p><div class="board" role="grid" aria-label="Room ${game.room} tactical board, six columns and five rows" aria-describedby="board-key">${cells}</div></section>`; }
+async function copyText(text: string) {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; } } catch { /* selection fallback */ }
+  const area = document.createElement('textarea'); area.value = text; area.className = 'copy-buffer'; area.setAttribute('readonly', ''); document.body.append(area); area.select();
+  const copied = document.execCommand('copy'); area.remove(); if (!copied) throw new Error('copy unavailable');
+}
+async function copyResult() {
+  try { await copyText(replayText(game, seed)); game.message = 'Result copied. Paste it into Compare a copied result.'; }
+  catch { game.message = 'Copy is unavailable here. Select the replay text to copy it.'; }
+  saveGame(); renderGame('[data-action="copy"]');
+}
+async function shareResult() {
+  const canShare = typeof navigator.share === 'function';
+  try { if (canShare) await navigator.share({ title: 'Dawn Run result', text: replayText(game, seed) }); else await copyText(replayText(game, seed)); game.message = canShare ? 'Share sheet opened.' : 'Result copied to share.'; }
+  catch { game.message = 'Sharing was cancelled. Your result remains on this device.'; }
+  saveGame(); renderGame('[data-action="share"]');
+}
+
+function parseReplay(value: string) {
+  const match = /date=([^|]+)\s*\|\s*seed=([^|]+)\s*\|\s*tool=([^|]+)\s*\|\s*result=(escaped|cashed out|caught)\s*\|\s*score=(\d+)\s*\|\s*time=(\d+)s\s*\|\s*replay=(.+)$/i.exec(value.trim());
+  return match ? { date: match[1].trim(), seed: match[2].trim(), tool: match[3].trim(), result: match[4].toLowerCase(), score: Number(match[5]), time: Number(match[6]), replay: match[7].trim() } : null;
+}
+function compareResult() {
+  const input = document.querySelector<HTMLInputElement>('#comparison-input'); const output = document.querySelector<HTMLElement>('#comparison-result'); if (!output) return;
+  const parsed = parseReplay(input?.value.replace(/^Replay data:\s*/i, '') || '');
+  if (!parsed) { output.textContent = 'That result is not in Dawn Run replay format. Copy a complete result and try again.'; return; }
+  output.textContent = `${parsed.seed === seed ? 'Same daily route.' : 'Different daily route.'} Their ${parsed.tool} run ${parsed.result} with ${parsed.score} points in ${parsed.time} seconds. Replay: ${parsed.replay}.`;
+}
+
+function submissionPayload() {
+  return {
+    nickname: settings.nickname, date: today, seed, tool: game.tool, result: game.finished, score: scoreGame(game),
+    durationSeconds: game.startedAt && game.finishedAt ? Math.max(0, Math.round((game.finishedAt - game.startedAt) / 1000)) : 0,
+    actions: game.log, demo: demo(),
+  };
+}
+
+async function publishScore() {
+  if (leaderboardBusy || game.phase !== 'end') return;
+  const input = document.querySelector<HTMLInputElement>('#nickname');
+  const nickname = cleanNickname(input?.value || settings.nickname);
+  if (nickname.length < 2) { leaderboardMessage = 'Enter a nickname with 2–16 letters or numbers.'; renderGame('#nickname'); return; }
+  settings.nickname = nickname; saveSettings(); leaderboardBusy = true;
+  leaderboardMessage = demo() ? 'Checking the sample replay…' : 'Verifying and publishing your replay…'; renderGame('[data-action="publish"]');
+  try {
+    const response = await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submissionPayload()) });
+    const body = await response.json() as { message?: string; entries?: LeaderboardItem[] };
+    if (!response.ok) throw new Error(body.message || `The score service returned ${response.status}.`);
+    leaderboard = body.entries || []; leaderboardMessage = body.message || 'Your verified score is published.';
+    if (!demo()) {
+      runHistory = runHistory.map((item, index) => index === 0 ? { ...item, published: true } : item);
+      localStorage.setItem(historyKey(), JSON.stringify(runHistory));
+    }
+  } catch (error) {
+    leaderboardMessage = navigator.onLine ? `The score could not be published. ${error instanceof Error ? error.message : 'Try again.'}` : 'You are offline. Your result is safe in local history; publish it when you reconnect.';
+  } finally { leaderboardBusy = false; renderGame('[data-action="publish"]'); }
+}
+
+async function loadLeaderboard() {
+  if (leaderboardBusy) return;
+  leaderboardBusy = true; leaderboardMessage = 'Loading today’s verified scores…'; renderGame('[data-action="load-scores"]');
+  try {
+    const response = await fetch(`/api/scores?date=${encodeURIComponent(today)}&demo=${demo() ? '1' : '0'}`);
+    const body = await response.json() as { message?: string; entries?: LeaderboardItem[] };
+    if (!response.ok) throw new Error(body.message || `The score service returned ${response.status}.`);
+    leaderboard = body.entries || []; leaderboardMessage = body.message || (leaderboard.length ? 'Today’s verified scores are ready.' : 'No verified scores yet today.');
+  } catch (error) {
+    leaderboardMessage = navigator.onLine ? `Scores are unavailable. ${error instanceof Error ? error.message : 'Try again.'}` : 'Scores are unavailable offline. Your local run still works.';
+  } finally { leaderboardBusy = false; renderGame('[data-action="load-scores"]'); }
+}
+
+function toolCard(tool: string) {
+  const text: Record<string, string> = { Hook: 'Clear one rock beside you.', Dash: 'Move east two tiles once per room.', Lantern: 'Restore up to two health once per room.', Decoy: 'Delay the watcher for six turns.', Cloak: 'Block the next watcher hit.' };
+  return `<button class="tool" data-tool="${tool}"><span class="tool-name">${tool}</span><span>${text[tool]}</span></button>`;
+}
+
+function roomBeaconCount() { return game.collected.filter(item => item.startsWith(`${game.room}:`)).length; }
+
+function board() {
+  const room = roomFor(seed, game.room);
+  const rows = Array.from({ length: BOARD_HEIGHT }, (_, y) => {
+    const cells = Array.from({ length: BOARD_WIDTH }, (_, x) => {
+      const cell = { x, y }; let type = 'ground'; let label = 'open route';
+      if (same(cell, room.exit)) { type = 'exit'; label = roomBeaconCount() === REQUIRED_BEACONS ? 'open exit flag' : `closed exit flag, ${REQUIRED_BEACONS - roomBeaconCount()} beacons remain`; }
+      if (room.walls.some(wall => same(wall, cell)) && !game.cleared.includes(pointKey(game.room, cell))) { type = 'wall'; label = 'rock, blocked'; }
+      if (room.beacons.some(beacon => same(beacon, cell)) && !game.collected.includes(pointKey(game.room, cell))) { type = 'beacon'; label = 'unlit beacon, required'; }
+      if (room.hazards.some(hazard => same(hazard, cell))) { type = 'hazard'; label = 'bramble, costs one health'; }
+      if (game.room > 1 && same(game.enemy || room.enemy, cell)) { type = 'enemy'; label = 'watcher'; }
+      if (same(game.player, cell)) { type = 'player'; label = 'you are here'; }
+      const icon = type === 'player' ? '●' : type === 'exit' ? '⚑' : type === 'wall' ? '▦' : type === 'beacon' ? '✦' : type === 'hazard' ? '✕' : type === 'enemy' ? '◉' : '';
+      const coordinate = settings.coordinates ? `<small aria-hidden="true">${String.fromCharCode(65 + x)}${y + 1}</small>` : '';
+      return `<div class="tile ${type}" role="gridcell" data-cell="${x},${y}" aria-label="Row ${y + 1}, column ${x + 1}: ${label}"><span aria-hidden="true">${icon}</span>${coordinate}</div>`;
+    }).join('');
+    return `<div class="board-row" role="row">${cells}</div>`;
+  }).join('');
+  return `<section class="board-wrap" aria-label="Room ${game.room} board"><p class="map-key" id="board-key"><span><i class="dot you"></i>You</span><span><i class="dot light"></i>Beacon</span><span><i class="dot flag"></i>Exit</span><span><i class="dot watch"></i>Watcher</span></p><div class="board" role="grid" tabindex="0" aria-label="Room ${game.room} tactical board, nine columns and seven rows. ${roomBeaconCount()} of three beacons lit." aria-describedby="board-key">${rows}</div></section>`;
+}
+
 function formatDuration(seconds: number) { return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }
-function durationSeconds() { if (!game.startedAt || !game.finishedAt) return 0; return Math.max(0, Math.round((game.finishedAt - game.startedAt) / 1000)); }
-function endView() { const heading = game.finished === 'escaped' ? 'You escaped the sixth room.' : game.finished === 'cashed out' ? 'You cashed out after five rooms.' : 'The watcher ended this run.'; const seconds = durationSeconds(); return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2>${heading}</h2><dl class="score"><div><dt>Score</dt><dd>${score()}</dd></div><div><dt>Health</dt><dd>${game.health}/3</dd></div><div><dt>Route</dt><dd>${game.log.length} moves</dd></div><div><dt>Time</dt><dd id="run-duration" data-seconds="${seconds}">${formatDuration(seconds)}</dd></div></dl><p class="replay" id="replay-data"><b>Replay data:</b> ${replay()}</p><p class="status" aria-live="polite">${game.message}</p><div class="actions"><button class="primary" data-action="copy">Copy result</button><button class="secondary" data-action="share">Share result</button><button class="secondary" data-action="save-comparison">Save for comparison</button></div><section class="comparison" aria-labelledby="comparison-heading"><h3 id="comparison-heading">Compare a copied result</h3><label for="comparison-input">Paste a Dawn Run result</label><div class="comparison-row"><input id="comparison-input" autocomplete="off"><button class="secondary" data-action="compare">Compare result</button></div><p id="comparison-result" aria-live="polite">Compare the daily seed, tool, score, and replay with another player.</p></section><button class="primary" data-action="restart">Start a fresh practice run</button><p class="small">Results stay on this device until you copy or share them.</p></section>`; }
-function gameView() { if (game.phase === 'choose') return `<section class="game-panel choose"><div class="run-meta"><span>DAILY SEED <b>${seed}</b></span><span>6 ROOMS</span></div><h2>Choose one tool</h2><p>Choose Hook, Dash, or Lantern for the shared daily map.</p><div class="tool-grid">${offers().map(toolCard).join('')}</div><p class="small">The route and all three tools are the same for every player.</p></section>`; if (game.phase === 'cashout') return `<section class="game-panel result"><p class="eyebrow">ROOM FIVE COMPLETE</p><h2>Cash out or take the final chase?</h2><p>Your current score is <strong>${score()}</strong>. The last watcher moves twice per turn.</p><div class="actions"><button class="primary" data-action="final">Run the final chase</button><button class="secondary" data-action="cash">Cash out with ${score()}</button></div></section>`; if (game.phase === 'end') return endView(); if (game.phase === 'pause') return `<section class="game-panel result"><p class="eyebrow">RUN PAUSED</p><h2>Resume your run</h2><p>Your room, score, and tool are saved in this browser.</p><button class="primary" data-action="resume">Resume run</button><p class="small">Press Escape or tap Resume run.</p></section>`; const directions = [['↑',0,-1,'Up'],['←',-1,0,'Left'],['↓',0,1,'Down'],['→',1,0,'Right']]; return `<section class="game-panel play"><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(3-game.health)}</b></span><span>SCORE <b>${score()}</b></span></div>${board()}<p class="status" aria-live="polite">${game.message}</p><div class="actions"><button class="primary" data-action="tool" ${game.roomUsed ? 'disabled aria-disabled="true"' : ''}>Use ${game.tool}${game.roomUsed ? ' (used)' : ''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${directions.map(([symbol,x,y,name]) => `<button aria-label="Move ${name}" data-move="${x},${y}">${symbol}</button>`).join('')}</div><p class="small input-note">Arrow keys or these controls move. Escape pauses.</p></section>`; }
-function shell(content: string) { return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo() ? `<aside class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></aside>` : ''}<main id="main" tabindex="-1">${content}</main><footer><span>One shared route for a short daily tactical run.</span><span class="footer-links"><a href="/privacy" data-nav>Privacy</a><a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v1.2</span><small>Illustration texture is original generated imagery.</small></footer><div class="route-live" aria-live="polite"></div>`; }
-function landing() { return shell(`<section class="hero"><div class="hero-copy"><p class="eyebrow">A DAILY BROWSER GAME</p><h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a short tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Loads a sample run. Nothing is saved.</span></div><ul class="facts"><li>Free to play</li><li>One shared seeded route</li><li>Works offline after the first visit</li><li>Saved in this browser</li><li>Fast 37-action Lantern runs finish in 1–10 seconds</li></ul></div><div class="hero-art" aria-label="A printed sunrise route map with a six-room game preview">${gameView()}</div></section><section id="how" class="how" tabindex="-1"><h2>How the daily run works</h2><ol><li><b>Pick one tool.</b> Choose Hook, Dash, or Lantern.</li><li><b>Route six rooms.</b> Use arrows, taps, or the controls.</li><li><b>Compare a result.</b> Copy, share, or paste replay data after a run.</li></ol></section><section class="plain"><h2>What Dawn Run does not do</h2><p>Scores stay on your device. Sharing only happens when you choose Copy result or Share result.</p></section>`); }
-function privacy() { return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores a current run and optional saved comparison data in your browser.</p><p>The game does not send this data to a server. Clearing site data removes it.</p><p>The demo uses separate browser keys that start with <code>demo:</code>. Reset demo and Start for real remove those keys.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`); }
-function terms() { return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game. It is provided as-is for personal play.</p><p>Local scores are not permanent records. You can copy a result to compare it with another player.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`); }
-function setMeta(path: string) { const title = path === '/privacy' ? 'Privacy — Dawn Run' : path === '/terms' ? 'Terms — Dawn Run' : demo() ? 'Demo — Dawn Run' : 'Dawn Run — Play a six-room daily run'; const description = path === '/privacy' ? 'How Dawn Run stores local game data.' : path === '/terms' ? 'Terms for the Dawn Run browser game.' : demo() ? 'Try an isolated sample Dawn Run.' : 'Play one six-room tactical run each day and compare a shared seed.'; document.title = title; document.querySelector('meta[name="description"]')?.setAttribute('content', description); document.querySelector('link[rel="canonical"]')?.setAttribute('href', `https://dawn-run.sociobot.in${path}`); document.querySelector('meta[property="og:title"]')?.setAttribute('content', title); document.querySelector('meta[property="og:description"]')?.setAttribute('content', description); }
-function render(focus = true) { const path = location.pathname; setMeta(path); app.innerHTML = path === '/privacy' ? privacy() : path === '/terms' ? terms() : landing(); document.querySelector<HTMLElement>('.route-live')!.textContent = document.title; requestAnimationFrame(() => { if (location.hash === '#how') { const target = document.querySelector<HTMLElement>('#how'); target?.scrollIntoView({block:'start'}); target?.focus({preventScroll:true}); } else if (focus) document.querySelector<HTMLElement>('h1')?.focus({preventScroll:true}); }); }
-function navigate(href: string) { history.pushState({}, '', href); game = load(); render(); }
-document.addEventListener('click', event => { const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action],[data-tool],[data-move],[data-nav]'); if (!target) return; if (target.dataset.nav !== undefined) { event.preventDefault(); navigate((target as HTMLAnchorElement).getAttribute('href') || '/'); return; } const action = target.dataset.action; if (target.dataset.tool) choose(target.dataset.tool as Tool); else if (target.dataset.move) { const [x,y] = target.dataset.move.split(',').map(Number); move(x,y); } else if (action === 'tool') useTool(); else if (action === 'pause') pause(); else if (action === 'resume') resume(); else if (action === 'final') finalChase(); else if (action === 'cash') cashOut(); else if (action === 'restart') restart(); else if (action === 'sample') location.assign('/demo'); else if (action === 'reset-demo') resetDemo(); else if (action === 'real') goReal(); else if (action === 'copy') void copyResult(); else if (action === 'share') void shareResult(); else if (action === 'save-comparison') saveComparison(); else if (action === 'compare') compareResult(); });
-window.addEventListener('popstate', () => { game = load(); render(); });
-window.addEventListener('keydown', event => { if (event.key === 'Escape') { if (game.phase === 'pause') resume(); else if (game.phase === 'play') pause(); return; } const keys: Record<string,[number,number]> = {ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}; if (keys[event.key] && game.phase === 'play') { event.preventDefault(); move(...keys[event.key]); } });
+function durationSeconds() { return game.startedAt && game.finishedAt ? Math.max(0, Math.round((game.finishedAt - game.startedAt) / 1000)) : 0; }
+
+function leaderboardView() {
+  const rows = leaderboard.map((item, index) => `<tr><td>${item.rank || index + 1}</td><td>${escapeHtml(item.nickname)}</td><td>${item.score}</td><td>${escapeHtml(item.tool)}</td><td>${formatDuration(item.durationSeconds)}</td><td><code>${escapeHtml(item.replay)}</code></td></tr>`).join('');
+  return `<section class="leaderboard" aria-labelledby="leaderboard-heading"><h3 id="leaderboard-heading">Today’s verified scores</h3><p>Publish sends your nickname, date, tool, score, time, and replay to Dawn Run. Published entries expire after seven days.</p><label for="nickname">Public nickname</label><input id="nickname" maxlength="16" autocomplete="nickname" value="${escapeHtml(settings.nickname)}"><div class="actions"><button class="primary" data-action="publish" ${leaderboardBusy ? 'disabled' : ''}>${demo() ? 'Check sample submission' : 'Publish verified score'}</button><button class="secondary" data-action="load-scores" ${leaderboardBusy ? 'disabled' : ''}>Load today’s scores</button></div><p id="leaderboard-status" class="status" aria-live="polite">${escapeHtml(leaderboardMessage)}</p>${rows ? `<div class="table-scroll"><table><caption>Verified replays for ${today}</caption><thead><tr><th>Rank</th><th>Nickname</th><th>Score</th><th>Tool</th><th>Time</th><th>Replay</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}${demo() ? '<p class="small">Demo submissions are verified against sample standings but are never published.</p>' : ''}</section>`;
+}
+
+function endView() {
+  const heading = game.finished === 'escaped' ? 'You escaped the sixth room.' : game.finished === 'cashed out' ? 'You cashed out after five rooms.' : 'The watcher ended this run.';
+  const seconds = durationSeconds();
+  return `<section class="game-panel result"><p class="eyebrow">DAILY RUN ${game.finished === 'escaped' ? 'COMPLETE' : 'ENDED'}</p><h2 id="result-heading" tabindex="-1">${heading}</h2><dl class="score"><div><dt>Score</dt><dd>${scoreGame(game)}</dd></div><div><dt>Health</dt><dd>${game.health}/${MAX_HEALTH}</dd></div><div><dt>Route</dt><dd>${game.log.length} turns</dd></div><div><dt>Time</dt><dd id="run-duration" data-seconds="${seconds}">${formatDuration(seconds)}</dd></div></dl><p class="replay" id="replay-data"><b>Replay data:</b> ${escapeHtml(replayText(game, seed))}</p><p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="copy">Copy result</button><button class="secondary" data-action="share">Share result</button></div>${leaderboardView()}<section class="comparison" aria-labelledby="comparison-heading"><h3 id="comparison-heading">Compare a copied result</h3><label for="comparison-input">Paste a Dawn Run result</label><div class="comparison-row"><input id="comparison-input" autocomplete="off"><button class="secondary" data-action="compare">Compare result</button></div><p id="comparison-result" aria-live="polite">Compare the daily seed, tool, score, time, and replay with another player.</p></section><button class="primary" data-action="restart">Start a fresh practice run</button></section>`;
+}
+
+function gameView() {
+  if (game.phase === 'choose') {
+    const offered = toolOffers(playerId(), today);
+    return `<section class="game-panel choose"><div class="run-meta"><span>DAILY SEED <b>${seed}</b></span><span>6 ROOMS · 18 BEACONS</span></div><h2>Choose one tool</h2><p>Your three-tool offer is set by this browser. Another player can receive a different set on the same map.</p><div class="tool-grid">${offered.map(toolCard).join('')}</div><p class="small">Offer code ${hashString(playerId()).toString(36).slice(0, 5).toUpperCase()} · The map stays shared.</p></section>`;
+  }
+  if (game.phase === 'cashout') return `<section class="game-panel result"><p class="eyebrow">ROOM FIVE COMPLETE</p><h2>Cash out or take the final chase?</h2><p>Your current score is <strong>${scoreGame(game)}</strong>. The last watcher moves faster when a beacon lights.</p><div class="actions"><button class="primary" data-action="final">Run the final chase</button><button class="secondary" data-action="cash">Cash out with ${scoreGame(game)}</button></div></section>`;
+  if (game.phase === 'end') return endView();
+  if (game.phase === 'pause') return `<section class="game-panel result"><p class="eyebrow">RUN PAUSED</p><h2>Resume your run</h2><p>Your room, score, tool, and lit beacons are saved in this browser.</p><button class="primary" data-action="resume">Resume run</button><p class="small">Press Escape or tap Resume run.</p></section>`;
+  const directions = [['↑', 0, -1, 'Up'], ['←', -1, 0, 'Left'], ['↓', 0, 1, 'Down'], ['→', 1, 0, 'Right']] as const;
+  return `<section class="game-panel play"><div class="hud"><span>ROOM <b>${game.room}/6</b></span><span>HEALTH <b>${'●'.repeat(game.health)}${'○'.repeat(MAX_HEALTH - game.health)}</b></span><span>BEACONS <b>${roomBeaconCount()}/${REQUIRED_BEACONS}</b></span><span>SCORE <b>${scoreGame(game)}</b></span></div>${board()}<p class="status" aria-live="polite">${escapeHtml(game.message)}</p><div class="actions"><button class="primary" data-action="tool" ${game.roomUsed ? 'disabled aria-disabled="true"' : ''}>Use ${game.tool}${game.roomUsed ? ' (used)' : ''}</button><button class="secondary" data-action="pause">Pause</button></div><div class="controls" aria-label="Move controls">${directions.map(([symbol, x, y, name]) => `<button aria-label="Move ${name}" data-move="${x},${y}">${symbol}</button>`).join('')}</div><p class="small input-note">Light all three beacons. Then reach the flag. Arrow keys or these controls move.</p></section>`;
+}
+
+function progressView() {
+  const best = runHistory.length ? Math.max(...runHistory.map(item => item.score)) : 0;
+  const rows = runHistory.map(item => `<li><span>${item.date} · ${escapeHtml(item.tool)} · ${escapeHtml(item.result)}</span><b>${item.score}</b><small>${item.moves} turns · ${formatDuration(item.duration)}${item.published ? ' · published' : ''}</small></li>`).join('');
+  return `<details class="progress-panel"><summary>Settings and run history</summary><div class="settings"><h2>Game settings</h2><label><input type="checkbox" data-setting="coordinates" ${settings.coordinates ? 'checked' : ''}> Show board coordinates</label><label><input type="checkbox" data-setting="reducedEffects" ${settings.reducedEffects ? 'checked' : ''}> Reduce visual effects</label><p class="small">Settings stay in this browser. Your three-tool offer stays tied to this browser.</p></div><div class="history"><h2>Recent runs</h2><p>Best score: <strong>${best || 'No score yet'}</strong></p>${rows ? `<ol>${rows}</ol>` : '<p>Finished runs will appear here.</p>'}</div></details>`;
+}
+
+function shell(content: string) {
+  return `<a class="skip" href="#main">Skip to the game</a><header><a class="wordmark" href="/" data-nav>Dawn <i>Run</i></a><nav aria-label="Main navigation"><a href="/demo" data-nav>Demo</a><a href="/#how" data-nav>How it works</a><a href="/privacy" data-nav>Privacy</a></nav></header>${demo() ? `<aside class="demo-banner" role="status">Demo — sample data, nothing is saved <span><button data-action="reset-demo">Reset demo</button><button data-action="real">Start for real</button></span></aside>` : ''}<main id="main" tabindex="-1">${content}</main><footer><span>A six-room tactical route for one player.</span><span class="footer-links"><a href="/privacy" data-nav>Privacy</a><a href="/terms" data-nav>Terms</a></span><span>Built by Param Factory · v2.0</span><small>Illustration texture is original generated imagery.</small></footer><div class="route-live" aria-live="polite"></div>`;
+}
+
+function landing() {
+  return shell(`<section class="hero"><div class="hero-copy"><p class="eyebrow">A DAILY BROWSER GAME</p><h1 tabindex="-1">Play a six-room daily run</h1><p class="lede">For people who want a 5–7 minute tactical game to compare each day.</p><div class="actions"><button class="primary" data-action="sample">Try it with sample data</button><span class="button-note">Loads a sample run. Nothing is saved.</span></div><ul class="facts"><li>Free to play</li><li>18 beacons on one shared map</li><li>Works offline after the first visit</li><li>Scores publish only when you choose</li></ul></div><div class="hero-game"><div class="hero-art" aria-label="A printed sunrise route map with the daily game">${gameView()}</div>${progressView()}</div></section><section id="how" class="how" tabindex="-1"><h2>How the daily run works</h2><ol><li><b>Pick one offered tool.</b> Each browser gets three from five tools.</li><li><b>Light 18 beacons.</b> Plan around rocks, brambles, and the watcher.</li><li><b>Publish a verified result.</b> Submit a nickname and replay after the run.</li></ol></section><section class="plain"><h2>What Dawn Run sends</h2><p>Runs and settings stay in this browser. Publishing sends only the listed result fields after you choose it.</p></section>`);
+}
+
+function privacy() {
+  return shell(`<article class="legal"><h1 tabindex="-1">Privacy at Dawn Run</h1><p>Dawn Run stores your current run, settings, player code, and eight recent results in this browser.</p><p>Nothing is published until you choose Publish verified score. Publication sends your nickname, date, tool, score, time, and replay to Dawn Run.</p><p>Published entries are pseudonymous and expire after seven days. Dawn Run does not use analytics, advertising, accounts, or third-party scripts.</p><p>The demo uses separate keys that start with <code>demo:</code>. Reset demo and Start for real remove those keys. Demo submissions are not stored.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
+}
+
+function terms() {
+  return shell(`<article class="legal"><h1 tabindex="-1">Terms for Dawn Run</h1><p>Dawn Run is a free browser game for personal play.</p><p>Published scores are replay-verified, pseudonymous, and kept for seven days. Invalid or abusive submissions may be rejected.</p><p>The game and score service are provided as-is.</p><p><a href="/" data-nav>Return to the daily run</a>.</p></article>`);
+}
+
+function setMeta(path: string) {
+  const title = path === '/privacy' ? 'Privacy — Dawn Run' : path === '/terms' ? 'Terms — Dawn Run' : demo() ? 'Demo — Dawn Run' : 'Dawn Run — Play a six-room daily run';
+  const description = path === '/privacy' ? 'How Dawn Run stores and publishes game data.' : path === '/terms' ? 'Terms for the Dawn Run browser game.' : demo() ? 'Try an isolated sample Dawn Run.' : 'Play a 5–7 minute tactical route and publish a verified daily score.';
+  document.title = title;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', description);
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', `https://dawn-run.sociobot.in${path}`);
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', title);
+  document.querySelector('meta[property="og:description"]')?.setAttribute('content', description);
+}
+
+function render(options: { routeFocus?: boolean; focus?: string } = {}) {
+  const path = location.pathname; setMeta(path); document.documentElement.classList.toggle('reduced-effects', settings.reducedEffects);
+  app.innerHTML = path === '/privacy' ? privacy() : path === '/terms' ? terms() : landing();
+  document.querySelector<HTMLElement>('.route-live')!.textContent = document.title;
+  requestAnimationFrame(() => {
+    if (location.hash === '#how') {
+      const target = document.querySelector<HTMLElement>('#how'); target?.scrollIntoView({ block: 'start' }); target?.focus({ preventScroll: true });
+    } else if (options.routeFocus) document.querySelector<HTMLElement>('h1')?.focus({ preventScroll: true });
+    else if (options.focus) document.querySelector<HTMLElement>(options.focus)?.focus({ preventScroll: true });
+  });
+}
+
+function focusSelector(element: Element | null) {
+  if (!(element instanceof HTMLElement)) return undefined;
+  if (element.id) return `#${CSS.escape(element.id)}`;
+  for (const name of ['action', 'move']) if (element.dataset[name]) return `[data-${name}="${CSS.escape(element.dataset[name] || '')}"]`;
+  if (element.getAttribute('role') === 'grid') return '[role="grid"]';
+  return undefined;
+}
+function renderGame(preferred?: string) { const prior = focusSelector(document.activeElement); render({ focus: preferred || prior }); }
+function navigate(href: string) {
+  window.history.pushState({}, '', href); settings = loadSettings(); game = loadGame(); runHistory = loadHistory(); render({ routeFocus: true });
+}
+
+document.addEventListener('click', event => {
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action],[data-tool],[data-move],[data-nav]'); if (!target) return;
+  if (target.dataset.nav !== undefined) { event.preventDefault(); navigate((target as HTMLAnchorElement).getAttribute('href') || '/'); return; }
+  const action = target.dataset.action;
+  if (target.dataset.tool) choose(target.dataset.tool as Tool);
+  else if (target.dataset.move) { const [x, y] = target.dataset.move.split(',').map(Number); const token = x === 1 ? 'R' : x === -1 ? 'L' : y === 1 ? 'D' : 'U'; runAction(token, `[data-move="${target.dataset.move}"]`); }
+  else if (action === 'tool') runAction('T');
+  else if (action === 'pause') pause();
+  else if (action === 'resume') resume();
+  else if (action === 'final') runAction('CHASE');
+  else if (action === 'cash') runAction('CASH');
+  else if (action === 'restart') restart();
+  else if (action === 'sample') location.assign('/demo');
+  else if (action === 'reset-demo') resetDemo();
+  else if (action === 'real') goReal();
+  else if (action === 'copy') void copyResult();
+  else if (action === 'share') void shareResult();
+  else if (action === 'compare') compareResult();
+  else if (action === 'publish') void publishScore();
+  else if (action === 'load-scores') void loadLeaderboard();
+});
+
+document.addEventListener('change', event => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>('[data-setting]'); if (!input) return;
+  if (input.dataset.setting === 'coordinates') settings.coordinates = input.checked;
+  if (input.dataset.setting === 'reducedEffects') settings.reducedEffects = input.checked;
+  saveSettings();
+});
+
+window.addEventListener('popstate', () => { settings = loadSettings(); game = loadGame(); runHistory = loadHistory(); render({ routeFocus: true }); });
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { if (game.phase === 'pause') resume(); else if (game.phase === 'play') pause(); return; }
+  const keys: Record<string, string> = { ArrowUp: 'U', ArrowDown: 'D', ArrowLeft: 'L', ArrowRight: 'R' };
+  if (keys[event.key] && game.phase === 'play') { event.preventDefault(); runAction(keys[event.key], focusSelector(document.activeElement)); }
+});
 document.addEventListener('visibilitychange', () => { if (!discardingDemo && document.hidden && game.phase === 'play') pause(); });
-let last = performance.now(), accumulator = 0; function loop(now: number) { accumulator += Math.min(250, now-last); last = now; while (accumulator >= 1000/60) accumulator -= 1000/60; requestAnimationFrame(loop); } requestAnimationFrame(loop);
+
+let last = performance.now(); let accumulator = 0;
+function loop(now: number) { accumulator += Math.min(250, now - last); last = now; while (accumulator >= 1000 / 60) accumulator -= 1000 / 60; requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
-render(false);
+render();

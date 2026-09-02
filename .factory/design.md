@@ -24,7 +24,7 @@ The interface uses locally shipped system font stacks: Georgia for large editori
 
 ## Interaction and motion
 
-Tools are large stamped buttons. Room choices are visible routes, not hidden dice rolls. A move briefly stamps the next tile and the character slides one tile; health and score update immediately. Reduced motion changes these to instant state changes. Screen shake is absent, and sound is omitted so the game stays quiet by default.
+Tools are large stamped buttons. Room choices are visible routes, not hidden dice rolls. Focus remains on the board or the control used when game state updates. Health, beacons, and score update immediately. Reduced motion and the persistent Reduce visual effects setting remove transitions. Screen shake and sound are omitted.
 
 ## Art plan and provenance
 
@@ -32,4 +32,8 @@ The hero is an original generated ink-and-halftone sunrise map illustration, use
 
 ## Difficulty curve
 
-Every daily run has exactly six rooms. Rooms 1–2 teach the selected tool against one hazard. Rooms 3–4 combine an enemy and obstacle. Room 5 offers a cash-out decision. Room 6 is a final chase where the exit is always reachable with careful tool use. Each day’s seed controls the map. Every player chooses one of the same three tools, so the tactical tradeoff is explicit and the route remains shared.
+Every daily run has six 9×7 rooms and 18 required beacons. The exit stays closed until all three room beacons are lit. Their alternating upper/lower placement removes the former straight winning lane and creates a 139–147-turn safe reference route across sampled dates. At the measured 2.5-second planning cadence, the 120–168 input budget is 5–7 minutes.
+
+Rooms 1–2 teach beacon routing around rocks and brambles. Rooms 3–4 add a watcher that advances when a beacon lights. Room 5 offers a cash-out decision. Room 6 advances the watcher twice at each beacon. Each UTC date controls every layout. A local player code selects three tools from Hook, Dash, Lantern, Decoy, and Cloak, so offers vary while the map stays shared.
+
+The active board is a semantic ARIA grid with seven owned rows and 63 named cells. Coordinate labels can be shown as a persistent setting. End screens layer the verified-score table over the same printed field-guide language instead of introducing a separate dashboard style.

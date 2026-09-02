@@ -3,28 +3,38 @@
 | Landing sentence or label | Words | Flag |
 | --- | ---: | --- |
 | Play a six-room daily run | 5 | — |
-| For people who want a short tactical game to compare each day. | 12 | — |
-| Loads a sample run. Nothing is saved. | 7 | — |
+| For people who want a 5–7 minute tactical game to compare each day. | 12 | — |
+| Loads a sample run. | 4 | — |
+| Nothing is saved. | 3 | — |
 | Free to play | 3 | — |
-| One shared seeded route | 4 | — |
+| 18 beacons on one shared map | 6 | — |
 | Works offline after the first visit | 6 | — |
-| Saved in this browser | 4 | — |
-| Fast 37-action Lantern runs finish in 1–10 seconds | 8 | — |
-| Choose Hook, Dash, or Lantern for the shared daily map. | 10 | — |
-| The route and all three tools are the same for every player. | 11 | — |
-| Choose Hook, Dash, or Lantern. | 5 | — |
-| Use arrows, taps, or the controls. | 7 | — |
-| Copy, share, or paste replay data after a run. | 9 | — |
-| Scores stay on your device. | 6 | — |
+| Scores publish only when you choose | 6 | — |
+| Choose one tool | 3 | — |
+| Your three-tool offer is set by this browser. | 8 | — |
+| Another player can receive a different set on the same map. | 11 | — |
+| Settings stay in this browser. | 5 | — |
+| Your three-tool offer stays tied to this browser. | 8 | — |
+| Finished runs will appear here. | 5 | — |
+| Pick one offered tool. | 4 | — |
+| Each browser gets three from five tools. | 7 | — |
+| Light 18 beacons. | 3 | — |
+| Plan around rocks, brambles, and the watcher. | 7 | — |
+| Publish a verified result. | 4 | — |
+| Submit a nickname and replay after the run. | 8 | — |
+| Runs and settings stay in this browser. | 7 | — |
+| Publishing sends only the listed result fields after you choose it. | 11 | — |
 
-No sentence exceeds 22 words. No banned words appear.
+No sentence exceeds 22 words. No banned word appears.
 
 ## Terminology
 
 | Concept | Product word |
 | --- | --- |
-| Date-derived deterministic map | seeded route |
-| Player ability selection | tool |
-| Map area | room |
-| Ending result data | replay data / result |
+| Date-derived deterministic layout | daily map |
+| Required room objective | beacon |
+| Player ability | tool |
+| Map stage | room |
+| Ending action record | replay |
+| Public verified result list | verified scores |
 | Optional early ending | cash out |

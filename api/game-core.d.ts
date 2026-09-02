@@ -1,0 +1,18 @@
+export const BOARD_WIDTH: number;
+export const BOARD_HEIGHT: number;
+export const REQUIRED_BEACONS: number;
+export const MAX_HEALTH: number;
+export const TOOLS: readonly string[];
+export type Point = { x: number; y: number };
+export type Room = { walls: Point[]; beacons: Point[]; hazards: Point[]; enemy: Point; start: Point; exit: Point };
+export type GameState = { version: number; date: string; phase: 'choose'|'play'|'cashout'|'end'|'pause'; room: number; tool: string|null; player: Point; health: number; beacons: number; log: string[]; message: string; roomUsed: boolean; cleared: string[]; collected: string[]; enemy: Point|null; turn: number; enemyDelay: number; shield: number; startedAt?: number; finishedAt?: number; finished?: 'escaped'|'cashed out'|'caught'; pausedFrom?: 'play' };
+export function hashString(input: string): number;
+export function seedForDate(date: string): string;
+export function toolOffers(playerId: string, date: string): string[];
+export function roomFor(seed: string, room: number): Room;
+export function createGame(date: string): GameState;
+export function scoreGame(game: GameState): number;
+export function selectTool(game: GameState, tool: string, startedAt?: number): GameState;
+export function applyAction(game: GameState, action: string, seed?: string, now?: number): boolean;
+export function replayText(game: GameState, seed?: string): string;
+export function verifyReplay(input: { date: string; seed: string; tool: string; result: string; score: number; actions: string[] }): { valid: boolean; error?: string; game?: GameState; score?: number };

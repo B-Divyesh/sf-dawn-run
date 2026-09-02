@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "npm --prefix api ci --ignore-scripts --no-audit --no-fund",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "playwright test"
+    "test": "node --test tests/api.test.js && playwright test"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

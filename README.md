@@ -1,38 +1,50 @@
 # Dawn Run
 
-Dawn Run is a free daily browser game for people who want a short tactical run to compare with friends. Fast 37-action Lantern runs finish in 1–10 seconds. Play with arrow keys or on-screen controls.
+Dawn Run is a free daily tactical browser game for one player. A full six-room route is designed for 5–7 minutes on keyboard or touch.
+
+Each room requires three beacons before its exit opens. The 18-beacon route takes 120–168 tactical inputs at the measured 2.5-second planning cadence. Players share the dated map but receive a player-specific offer of three tools from a pool of five.
 
 ## Run it
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-Open the local URL shown by Vite. Open `/demo` (or `/?demo=1`) for the isolated sample run.
+Open the Vite URL. The local server includes an in-memory score API for end-to-end development. Open `/demo` for the isolated sample run.
 
 ## Test and build
 
 ```sh
-npm test
 npm run typecheck
 npm run lint
+npm test -- --reporter=line
 npm run build
 ```
 
-The Playwright suite checks the demo boundary, seed-generated rooms, keyboard and touch recovery, real win/loss/cash-out runs, comparison import, offline `/demo` navigation, local-only requests, 55+ fps sampling, and WCAG AA axe baseline. The deployable static site is written to `dist/`.
+The tests play deterministic win, loss, and cash-out routes through their real screens. They also cover replay verification, score publication, active-state axe checks, keyboard focus, touch resume, persistent settings/history, privacy, offline reload, and frame rate.
 
-## How it works
+The production build writes the static client to `dist/`.
 
-The UTC date creates the displayed seed and all six room layouts. Players on the same date receive the same map. Every player chooses one of the same three tools: Hook, Dash, or Lantern. Current runs and optional comparison data stay in `localStorage`. Completed runs can be copied, shared through the browser share sheet when available, or pasted into the comparison panel. No score is sent to a server.
+## Scores and privacy
 
-The game uses a fixed 60 fps simulation heartbeat and the test suite samples at least 55 fps in Chromium. A complete Lantern route has 37 input actions, displays its elapsed time on the end screen, and is tested to finish in 1–10 seconds in Chromium.
+Runs, settings, a random player code, and eight recent results stay in browser storage. Nothing is published until the player chooses **Publish verified score**.
 
-The production hero texture is an original generated image. Its prompt and provenance are recorded in `.factory/design.md`; its source PNG is retained in `assets/src/`.
+Publication sends a nickname, UTC date, tool, score, duration, and deterministic replay to the product’s same-origin API. The API rebuilds the run from its actions, rejects altered results, and retains the published row for seven days. Demo submissions are verified against sample standings but never stored.
+
+Production links `/api/scores` to the product-owned `sf-dawn-run-api` container. It stores seven-day scores in SQLite under `/data`. No account, third-party script, analytics service, or payment service is used. Play and local history keep working offline after the first controlled visit; the leaderboard requires a connection.
 
 ## Deploy
 
-This is a static Vite build. Deploy the contents of `dist/` with the included `staticwebapp.config.json` so deep links and security headers work.
+This remains a static Vite browser-game deployment with a linked same-origin API:
+
+```sh
+npm run build
+/opt/fleet/lib/deploy-static.sh dawn-run ./dist
+WO_DATA_DIR=/data /opt/fleet/lib/deploy-container.sh dawn-run-api . api/Dockerfile 8080
+```
+
+Link `sf-dawn-run-api` as the existing `sf-dawn-run` Static Web App backend after both deployments.
 
 ## License
 

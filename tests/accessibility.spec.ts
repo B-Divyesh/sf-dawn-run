@@ -11,6 +11,19 @@ for (const path of ['/', '/demo', '/privacy', '/terms']) {
   });
 }
 
+test('active game has no serious or critical axe violations', async ({ page }) => {
+  await page.goto('/demo');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('demo:player', 'axe-player'); });
+  await page.reload();
+  await page.locator('[data-tool]').first().click();
+  await page.addScriptTag({ content: axe.source });
+  const results = await page.evaluate(async () => (window as unknown as { axe: typeof axe }).axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } }));
+  const serious = results.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+  await expect(page.getByRole('row')).toHaveCount(7);
+  await expect(page.getByRole('gridcell')).toHaveCount(63);
+});
+
 test('load has no console errors', async ({ page }) => {
   const errors: string[] = [];
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -32,6 +45,17 @@ test('initial Tab starts at the skip link and client navigation focuses the new 
   await expect(page.getByRole('heading', { name: 'Play a six-room daily run' })).toBeFocused();
 });
 
+test('active game rerenders preserve the relevant keyboard focus', async ({ page }) => {
+  await page.goto('/demo');
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('demo:player', 'focus-player'); });
+  await page.reload();
+  await page.locator('[data-tool]').first().focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('grid')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('grid')).toBeFocused();
+});
+
 test('all visible interactive targets meet the 44px mobile baseline', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const path of ['/', '/demo', '/privacy', '/terms']) {
@@ -46,4 +70,11 @@ test('all visible interactive targets meet the 44px mobile baseline', async ({ p
     }));
     expect(undersized, `${path} has undersized targets`).toEqual([]);
   }
+  await page.goto('/demo');
+  await page.locator('[data-tool]').first().click();
+  const activeUndersized = await page.locator('a, button, input, summary').evaluateAll(elements => elements.flatMap(element => {
+    const box = element.getBoundingClientRect(); const style = getComputedStyle(element); const visible = box.width > 0 && box.height > 0 && style.visibility !== 'hidden';
+    return visible && (box.width < 44 || box.height < 44) ? [{ label: (element.textContent || element.getAttribute('aria-label') || '').trim(), width: box.width, height: box.height }] : [];
+  }));
+  expect(activeUndersized, 'active game has undersized targets').toEqual([]);
 });
